@@ -129,7 +129,7 @@ class ReaderActivity : Activity() {
             setTextColor(KapijujaUiTheme.SILVER)
             setLineSpacing(dp(5).toFloat(), 1.08f)
             setPadding(dp(10), dp(14), dp(10), dp(32))
-            textIsSelectable = true
+            setTextIsSelectable(true)
         }
         scroll.addView(textView)
         root.addView(scroll, LinearLayout.LayoutParams(
