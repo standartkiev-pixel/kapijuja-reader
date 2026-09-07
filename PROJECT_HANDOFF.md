@@ -3,9 +3,101 @@
 Дата состояния: 2026-09-07  
 Репозиторий: `standartkiev-pixel/kapijuja-reader`  
 Основная ветка: `main`  
-Текущая версия: `0.1.6`  
-`versionCode = 7`  
+Текущая версия: `0.1.7`  
+`versionCode = 8`  
 Android package / applicationId: `com.kapijuja.reader`
+
+
+## Обновление 0.1.7 — 2026-09-08
+
+Эта секция новее 0.1.6 и имеет приоритет при расхождениях.
+
+### Исправлен OOM при Android TTS WAV
+
+Пользовательский bugreport 2026-09-08 дал точный stack trace:
+
+`java.lang.OutOfMemoryError` при попытке выделить примерно 242–245 МБ в
+`ByteArrayOutputStream` -> `WavTools.join()` -> `ReaderActivity.startAndroidWavExport()`.
+
+То есть Android TTS уже успешно создавал все WAV-фрагменты; падал наш финальный этап, который пытался собрать весь огромный PCM/WAV в один ByteArray в heap с лимитом около 256 МБ.
+
+Исправление:
+- `WavTools.joinTo(files, OutputStream)` больше не создаёт полный WAV в RAM;
+- WAV header пишется один раз;
+- data chunks копируются последовательно через буфер 64 KiB прямо в выбранный пользователем файл;
+- память теперь практически не зависит от длины итогового WAV;
+- временные fragment files удаляются после завершения/ошибки.
+
+MP3 encoder в основной APK НЕ добавлен: причина ошибки была не в формате WAV. Это сохраняет приложение маленьким. Если позже нужен сжатый локальный export без тяжёлого LAME, отдельно рассмотреть Android MediaCodec/AAC-M4A.
+
+### Google Gemini long WAV также переведён на streaming
+
+Раньше Gemini export накапливал весь PCM в `ByteArrayOutputStream`, поэтому на очень длинном тексте мог прийти к тому же OOM.
+
+Теперь:
+- каждый полученный PCM chunk сразу пишется во временный raw PCM file;
+- `WavTools.pcmToWavTo()` создаёт итоговый WAV потоково;
+- используется 64 KiB buffer;
+- temporary PCM удаляется в `finally`.
+
+### Кнопка Cancel
+
+Во время любого audio export `updateEngineLabels()` теперь не имеет права вернуть кнопке обычный Save label.
+
+Состояние:
+- MP3: `Отменить MP3 / Anuluj MP3 / Cancel MP3`
+- WAV: `Отменить WAV / Anuluj WAV / Cancel WAV`
+
+`currentExportFormat` сохраняет активный формат до завершения. После окончания/отмены снова показывается Save MP3/WAV.
+
+### Языки RU / PL / EN
+
+Добавлена настройка языка интерфейса:
+- Automatic — язык телефона;
+- Русский;
+- Polski;
+- English.
+
+По умолчанию стоит Automatic. Выбор сохраняется в SharedPreferences и действует после перезапуска. Settings применяет язык сразу через `recreate()`; Main/Reader при возврате из Settings тоже проверяют изменение и пересоздаются.
+
+`UiText.kt` теперь:
+- определяет RU/PL/EN;
+- поддерживает явные 3-язычные строки;
+- содержит централизованный Polish dictionary для существующих двухъязычных строк;
+- локализует распространённые service/provider/document error messages через `localizeMessage()`.
+
+Переведены основные меню, Settings, Reader controls, export dialogs/progress/errors, provider checks/status, notification MediaStyle controls и library UI.
+
+### Библиотека остаётся простой читалкой
+
+Не добавлялась база данных, теги или сложная архивная система.
+
+Добавлено:
+- default retention = последние 200 текстов;
+- варианты Settings: 100 / 200 / 500 / 1000 / 5000 / 10000 / All;
+- даже `All` имеет hard safety ceiling 1 GiB;
+- при превышении удаляются самые старые тексты;
+- отредактированный текст считается недавно сохранённым;
+- long press на карточке -> Delete confirmation;
+- Main показывает карточки порциями по 80;
+- `LibraryStore.excerpt()` читает только небольшой кусок файла вместо загрузки полного текста для каждой карточки.
+
+Это не превращает Reader в document manager и не даёт длинной библиотеке создавать тысячи View одновременно.
+
+### Следующая проверка на устройстве
+
+Особенно проверить:
+- тот же длинный Android network voice export, который раньше падал на ~242–245 МБ;
+- итоговый WAV реально открывается и имеет полный хронометраж;
+- Cancel WAV и Cancel MP3: label меняется сразу и остаётся Cancel до остановки;
+- Google Gemini long WAV;
+- переключение Automatic/Russian/Polish/English;
+- Polish menus/service messages;
+- retention 100/200 и удаление oldest;
+- long press delete;
+- library >80 items -> Show more;
+- background notification controls после language switch.
+
 
 
 ## Обновление 0.1.6 — 2026-09-07
