@@ -40,6 +40,7 @@ class ReaderActivity : Activity() {
     private lateinit var listenButton: Button
     private lateinit var player: LinearLayout
     private lateinit var playPause: Button
+    private lateinit var editButton: Button
     private lateinit var engineButton: Button
     private lateinit var voiceButton: Button
     private lateinit var speedButton: Button
@@ -81,9 +82,25 @@ class ReaderActivity : Activity() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private val playbackController = object : PlaybackBridge.Controller {
+        override fun toggleFromNotification() {
+            mainHandler.post {
+                if (isPlaying) pauseSpeech() else startOrResume()
+            }
+        }
+
+        override fun stopFromNotification() {
+            mainHandler.post {
+                pauseSpeech()
+                PlaybackBridge.stop(this@ReaderActivity)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KapijujaUiTheme.applyWindow(this)
+        PlaybackBridge.controller = playbackController
         loadInput()
         segments = segmentText(text)
         buildScreen()
@@ -161,7 +178,7 @@ class ReaderActivity : Activity() {
         )
 
         val settings = Button(this).apply {
-            text = "⚙ Настройки"
+            text = t("⚙ Настройки", "⚙ Settings")
             textSize = 13f
             setOnClickListener {
                 pauseSpeech()
@@ -172,21 +189,11 @@ class ReaderActivity : Activity() {
         top.addView(settings, LinearLayout.LayoutParams(dp(120), dp(52)))
         root.addView(top)
 
-        val actionRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(5), 0, dp(4))
-        }
+        // Compatibility target for existing status updates. The only visible
+        // playback toggle is the bottom-left playPause button.
         listenButton = Button(this).apply {
-            text = "Слушать"
-            textSize = 16f
-            setOnClickListener {
-                if (editMode) saveEditedText() else startOrResume()
-            }
+            visibility = View.GONE
         }
-        KapijujaUiTheme.button(this, listenButton, primary = true)
-        actionRow.addView(listenButton, LinearLayout.LayoutParams(dp(128), dp(54)))
-        root.addView(actionRow)
 
         if (source.isNotBlank()) {
             val sourceView = TextView(this).apply {
@@ -250,7 +257,7 @@ class ReaderActivity : Activity() {
 
         player = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
+            visibility = View.VISIBLE
             setPadding(dp(10), dp(9), dp(10), dp(9))
             background = KapijujaUiTheme.panel(
                 this@ReaderActivity,
@@ -267,9 +274,15 @@ class ReaderActivity : Activity() {
         }
 
         playPause = Button(this).apply {
-            text = "Пауза"
+            text = t("Слушать", "Listen")
             setOnClickListener {
-                if (isPlaying) pauseSpeech() else startOrResume()
+                if (editMode) {
+                    saveEditedText()
+                } else if (isPlaying) {
+                    pauseSpeech()
+                } else {
+                    startOrResume()
+                }
             }
         }
         KapijujaUiTheme.button(this, playPause, primary = true)
@@ -292,12 +305,14 @@ class ReaderActivity : Activity() {
             }
         )
 
-        val edit = Button(this).apply {
-            text = "Редактировать"
-            setOnClickListener { enterEditMode() }
+        editButton = Button(this).apply {
+            text = t("Редактировать", "Edit")
+            setOnClickListener {
+                if (editMode) saveEditedText() else enterEditMode()
+            }
         }
-        KapijujaUiTheme.button(this, edit)
-        controls.addView(edit, LinearLayout.LayoutParams(0, dp(54), 1.15f))
+        KapijujaUiTheme.button(this, editButton)
+        controls.addView(editButton, LinearLayout.LayoutParams(0, dp(54), 1.15f))
         player.addView(controls)
 
         val voiceRow = LinearLayout(this).apply {
@@ -307,7 +322,7 @@ class ReaderActivity : Activity() {
         }
 
         engineButton = Button(this).apply {
-            text = "Движок"
+            text = t("Движок", "Engine")
             setOnClickListener {
                 pauseSpeech()
                 startActivity(Intent(this@ReaderActivity, SettingsActivity::class.java))
@@ -322,7 +337,7 @@ class ReaderActivity : Activity() {
         )
 
         voiceButton = Button(this).apply {
-            text = "Голос"
+            text = t("Голос", "Voice")
             setOnClickListener {
                 pauseSpeech()
                 startActivity(Intent(this@ReaderActivity, SettingsActivity::class.java))
@@ -339,7 +354,7 @@ class ReaderActivity : Activity() {
         }
 
         val saveText = Button(this).apply {
-            text = "Сохранить файл"
+            text = t("Сохранить файл", "Save text")
             textSize = 14f
             setOnClickListener { requestTextExport() }
         }
@@ -352,7 +367,7 @@ class ReaderActivity : Activity() {
         )
 
         saveAudioButton = Button(this).apply {
-            text = "Сохранить MP3"
+            text = t("Сохранить MP3", "Save MP3")
             textSize = 14f
             setOnClickListener {
                 requestAudioExport()
@@ -456,7 +471,7 @@ class ReaderActivity : Activity() {
         player.visibility = View.VISIBLE
         highlight(index)
         listenButton.text = if (wasPlaying) "Готовится…" else "Слушать отсюда"
-        playPause.text = "Продолжить"
+        playPause.text = t("Продолжить", "Resume")
         resultText.text = "Старт: предложение ${index + 1} из ${segments.size}"
 
         AppDiagnostics.info(
@@ -501,7 +516,7 @@ class ReaderActivity : Activity() {
     private fun showUnavailable(message: String) {
         isPlaying = false
         listenButton.text = "Слушать"
-        playPause.text = "Продолжить"
+        playPause.text = t("Продолжить", "Resume")
         resultText.text = message
         AlertDialog.Builder(this)
             .setTitle("Движок пока не активен")
@@ -610,9 +625,10 @@ class ReaderActivity : Activity() {
                         mainHandler.post {
                             isPlaying = false
                             currentSegment = 0
-                            playPause.text = "Сначала"
+                            playPause.text = t("Сначала", "Start over")
                             listenButton.text = "Слушать"
-                            resultText.text = "Чтение завершено."
+                            resultText.text = t("Чтение завершено.", "Reading complete.")
+                            stopPlaybackNotification()
                         }
                     }
                 }
@@ -620,7 +636,7 @@ class ReaderActivity : Activity() {
                 override fun onError(utteranceId: String?) {
                     mainHandler.post {
                         isPlaying = false
-                        playPause.text = "Продолжить"
+                        playPause.text = t("Продолжить", "Resume")
                         listenButton.text = "Слушать"
                         resultText.text = "Ошибка Android TTS."
                     }
@@ -648,9 +664,10 @@ class ReaderActivity : Activity() {
         }
 
         isPlaying = true
-        playPause.text = "Пауза"
+        playPause.text = t("Пауза", "Pause")
         listenButton.text = "Читается"
         resultText.text = ""
+        syncPlaybackNotification()
     }
 
     private fun startOpenAiWithGuard() {
@@ -792,8 +809,9 @@ class ReaderActivity : Activity() {
 
         val token = generationToken
         isPlaying = true
-        playPause.text = "Пауза"
+        playPause.text = t("Пауза", "Pause")
         listenButton.text = "Готовится…"
+        syncPlaybackNotification()
 
         resultText.text =
             when (engine) {
@@ -1195,7 +1213,7 @@ class ReaderActivity : Activity() {
                                 false
                             currentSegment = 0
                             playPause.text =
-                                "Сначала"
+                                t("Сначала", "Start over")
                             listenButton.text =
                                 "Слушать"
 
@@ -1203,6 +1221,7 @@ class ReaderActivity : Activity() {
                                 completionText(
                                     engine
                                 )
+                            stopPlaybackNotification()
                         } else {
                             playCloudChunk(
                                 startIndex = next,
@@ -1533,9 +1552,10 @@ class ReaderActivity : Activity() {
         stopMediaOnly()
         clearCloudPrefetch()
         isPlaying = false
+        syncPlaybackNotification()
 
         if (::playPause.isInitialized) {
-            playPause.text = "Продолжить"
+            playPause.text = t("Продолжить", "Resume")
         }
         if (::listenButton.isInitialized && !editMode) {
             listenButton.text = "Слушать"
@@ -1575,8 +1595,13 @@ class ReaderActivity : Activity() {
         editor.setSelection(editor.text.length)
         textView.visibility = View.GONE
         editor.visibility = View.VISIBLE
-        player.visibility = View.GONE
-        listenButton.text = "Сохранить"
+        player.visibility = View.VISIBLE
+        editButton.text = t("Сохранить", "Save")
+        playPause.isEnabled = false
+        playPause.text = t("Редактирование", "Editing")
+        engineButton.isEnabled = false
+        voiceButton.isEnabled = false
+        saveAudioButton.isEnabled = false
         editor.requestFocus()
     }
 
@@ -1618,9 +1643,14 @@ class ReaderActivity : Activity() {
         editor.visibility = View.GONE
         textView.visibility = View.VISIBLE
         editMode = false
-        listenButton.text = "Слушать"
+        editButton.text = t("Редактировать", "Edit")
+        playPause.isEnabled = true
+        playPause.text = t("Слушать", "Listen")
+        engineButton.isEnabled = true
+        voiceButton.isEnabled = true
+        saveAudioButton.isEnabled = true
         player.visibility = View.VISIBLE
-        resultText.text = "Текст сохранён."
+        resultText.text = t("Текст сохранён.", "Text saved.")
 
         Toast.makeText(
             this,
@@ -2453,8 +2483,24 @@ class ReaderActivity : Activity() {
         tts?.stop()
         tts?.shutdown()
         stopMediaOnly()
+        stopPlaybackNotification()
+        if (PlaybackBridge.controller === playbackController) {
+            PlaybackBridge.controller = null
+        }
         super.onDestroy()
     }
+
+    private fun syncPlaybackNotification() {
+        if (::playPause.isInitialized) {
+            PlaybackBridge.sync(this, title, isPlaying)
+        }
+    }
+
+    private fun stopPlaybackNotification() {
+        PlaybackBridge.stop(this)
+    }
+
+    private fun t(ru: String, en: String) = UiText.get(this, ru, en)
 
     private fun dp(v: Int) =
         KapijujaUiTheme.dp(this, v)
