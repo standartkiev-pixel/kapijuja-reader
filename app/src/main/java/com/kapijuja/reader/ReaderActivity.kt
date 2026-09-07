@@ -1782,7 +1782,7 @@ class ReaderActivity : Activity() {
                         .substringAfterLast('.')
                         .take(18)
                 else ->
-                    "Движок"
+                    t("Движок", "Engine")
             }
 
         if (::saveAudioButton.isInitialized) {
@@ -2011,16 +2011,20 @@ class ReaderActivity : Activity() {
             } catch (_: InterruptedException) {
                 mainHandler.post { showExportCancelled("WAV") }
             } catch (t: Throwable) {
-                AppDiagnostics.error(this@ReaderActivity, "Android WAV export failed", t)
-                mainHandler.post {
-                    restoreAudioExportButton()
-                    progressText.text = t("Ошибка создания WAV", "WAV export error")
-                    resultText.text = t.message ?: t("Ошибка Android TTS", "Android TTS error")
-                    AlertDialog.Builder(this)
-                        .setTitle(t("WAV не создан", "WAV not created"))
-                        .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
-                        .setPositiveButton("OK", null)
-                        .show()
+                if (exportCancelled) {
+                    mainHandler.post { showExportCancelled("WAV") }
+                } else {
+                    AppDiagnostics.error(this@ReaderActivity, "Android WAV export failed", t)
+                    mainHandler.post {
+                        restoreAudioExportButton()
+                        progressText.text = t("Ошибка создания WAV", "WAV export error")
+                        resultText.text = t.message ?: t("Ошибка Android TTS", "Android TTS error")
+                        AlertDialog.Builder(this)
+                            .setTitle(t("WAV не создан", "WAV not created"))
+                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
                 }
             } finally {
                 ttsExportLatches.clear()
@@ -2380,7 +2384,7 @@ class ReaderActivity : Activity() {
                                 exportProgress.progress =
                                     percent
                                 progressText.text =
-                                    "Создание MP3: ${index + 1}/${chunks.size} • $percent%"
+                                    t("Создание MP3: ${index + 1}/${chunks.size} • $percent%", "Creating MP3: ${index + 1}/${chunks.size} • $percent%")
                                 listenButton.text =
                                     "MP3 $percent%"
                             }
@@ -2391,7 +2395,7 @@ class ReaderActivity : Activity() {
                 mainHandler.post {
                     exportProgress.progress = 100
                     progressText.text =
-                        "MP3 полностью записан • 100%"
+                        t("MP3 полностью записан • 100%", "MP3 complete • 100%")
                     listenButton.text = "Слушать"
                     restoreAudioExportButton()
 
@@ -2442,31 +2446,28 @@ class ReaderActivity : Activity() {
             } catch (_: InterruptedException) {
                 mainHandler.post { showExportCancelled("MP3") }
             } catch (t: Throwable) {
-                AppDiagnostics.error(
-                    this@ReaderActivity,
-                    "MP3 export failed: engine=$engine",
-                    t
-                )
-                mainHandler.post {
-                    restoreAudioExportButton()
-                    listenButton.text = "Слушать"
-                    exportProgress.visibility =
-                        View.VISIBLE
-                    progressText.visibility =
-                        View.VISIBLE
-                    progressText.text =
-                        "Ошибка создания MP3"
-                    resultText.text =
-                        t.message ?: "Ошибка создания MP3"
+                if (exportCancelled) {
+                    mainHandler.post { showExportCancelled("MP3") }
+                } else {
+                    AppDiagnostics.error(
+                        this@ReaderActivity,
+                        "MP3 export failed: engine=$engine",
+                        t
+                    )
+                    mainHandler.post {
+                        restoreAudioExportButton()
+                        listenButton.text = "Слушать"
+                        exportProgress.visibility = View.VISIBLE
+                        progressText.visibility = View.VISIBLE
+                        progressText.text = t("Ошибка создания MP3", "MP3 export error")
+                        resultText.text = t.message ?: t("Ошибка создания MP3", "MP3 export error")
 
-                    AlertDialog.Builder(this)
-                        .setTitle("MP3 не создан")
-                        .setMessage(
-                            t.message
-                                ?: "Неизвестная ошибка"
-                        )
-                        .setPositiveButton("OK", null)
-                        .show()
+                        AlertDialog.Builder(this)
+                            .setTitle(t("MP3 не создан", "MP3 not created"))
+                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
                 }
             }
         }.also { it.start() }
@@ -2540,7 +2541,7 @@ class ReaderActivity : Activity() {
                         exportProgress.progress =
                             percent
                         progressText.text =
-                            "Создание WAV: ${index + 1}/${chunks.size} • $percent%"
+                            t("Создание WAV: ${index + 1}/${chunks.size} • $percent%", "Creating WAV: ${index + 1}/${chunks.size} • $percent%")
                         listenButton.text =
                             "WAV $percent%"
                     }
@@ -2600,35 +2601,27 @@ class ReaderActivity : Activity() {
             } catch (_: InterruptedException) {
                 mainHandler.post { showExportCancelled("WAV") }
             } catch (t: Throwable) {
-                AppDiagnostics.error(
-                    this@ReaderActivity,
-                    "Google WAV export failed",
-                    t
-                )
+                if (exportCancelled) {
+                    mainHandler.post { showExportCancelled("WAV") }
+                } else {
+                    AppDiagnostics.error(
+                        this@ReaderActivity,
+                        "Google WAV export failed",
+                        t
+                    )
 
-                mainHandler.post {
-                    restoreAudioExportButton()
-                    listenButton.text =
-                        "Слушать"
-                    progressText.text =
-                        "Ошибка создания WAV"
-                    resultText.text =
-                        t.message ?:
-                            "Ошибка Google Gemini"
+                    mainHandler.post {
+                        restoreAudioExportButton()
+                        listenButton.text = "Слушать"
+                        progressText.text = t("Ошибка создания WAV", "WAV export error")
+                        resultText.text = t.message ?: t("Ошибка Google Gemini", "Google Gemini error")
 
-                    AlertDialog.Builder(this)
-                        .setTitle(
-                            "WAV не создан"
-                        )
-                        .setMessage(
-                            t.message ?:
-                                "Неизвестная ошибка"
-                        )
-                        .setPositiveButton(
-                            "OK",
-                            null
-                        )
-                        .show()
+                        AlertDialog.Builder(this)
+                            .setTitle(t("WAV не создан", "WAV not created"))
+                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setPositiveButton("OK", null)
+                            .show()
+                    }
                 }
             }
         }.also { it.start() }
@@ -2740,6 +2733,11 @@ class ReaderActivity : Activity() {
 
     override fun onDestroy() {
         generationToken += 1
+        if (exportInProgress) {
+            exportCancelled = true
+            ttsExportLatches.values.forEach { it.countDown() }
+            exportThread?.interrupt()
+        }
         tts?.stop()
         tts?.shutdown()
         stopMediaOnly()
