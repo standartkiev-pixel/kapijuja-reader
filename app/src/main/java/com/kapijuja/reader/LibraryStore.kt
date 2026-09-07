@@ -82,7 +82,7 @@ object LibraryStore {
                 id = id,
                 title = title.ifBlank { old?.title ?: "Без названия" },
                 source = source.ifBlank { old?.source.orEmpty() },
-                createdAt = old?.createdAt ?: System.currentTimeMillis()
+                createdAt = System.currentTimeMillis()
             )
         )
         writeIndex(context, current)
