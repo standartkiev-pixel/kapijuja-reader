@@ -2,11 +2,17 @@ package com.kapijuja.reader
 
 import android.content.Context
 import java.net.HttpURLConnection
+import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.net.URL
+import java.net.UnknownHostException
 import java.util.Locale
 
 object AzureTtsClient {
-    private const val MAX_TEXT_CHARS = 2500
+    // The bug report showed occasional connection aborts while reading ~2.4k-char
+    // responses. Smaller chunks are more reliable on mobile networks and are also
+    // fast enough to prebuffer while the previous chunk is playing.
+    private const val MAX_TEXT_CHARS = 900
 
     fun synthesize(
         speechKey: String,
@@ -19,8 +25,8 @@ object AzureTtsClient {
         require(speechKey.isNotBlank()) {
             "Azure Speech key не указан"
         }
-        require(region.matches(Regex("[a-z0-9-]+"))) {
-            "Azure region не указан или содержит недопустимые символы"
+        require(SettingsStore.isValidAzureRegion(region)) {
+            "Azure region должен быть точным идентификатором, например switzerlandnorth"
         }
         require(text.isNotBlank()) {
             "Пустой текст"
@@ -33,23 +39,74 @@ object AzureTtsClient {
         val output = java.io.ByteArrayOutputStream()
 
         chunks.forEachIndexed { index, chunk ->
-            AppDiagnostics.info(
-                context,
-                "Azure TTS request: region=$region voice=$voice chars=${chunk.length} chunk=${index + 1}/${chunks.size}"
-            )
             output.write(
-                synthesizeOnce(
+                synthesizeChunkWithRetry(
                     speechKey = speechKey,
                     region = region,
                     text = chunk,
                     voice = voice,
                     speed = speed,
-                    context = context
+                    context = context,
+                    index = index,
+                    count = chunks.size
                 )
             )
         }
 
         return output.toByteArray()
+    }
+
+    private fun synthesizeChunkWithRetry(
+        speechKey: String,
+        region: String,
+        text: String,
+        voice: String,
+        speed: Float,
+        context: Context?,
+        index: Int,
+        count: Int
+    ): ByteArray {
+        var last: Throwable? = null
+
+        for (attempt in 1..3) {
+            try {
+                AppDiagnostics.info(
+                    context,
+                    "Azure TTS request: region=$region voice=$voice chars=${text.length} chunk=${index + 1}/$count attempt=$attempt"
+                )
+
+                return synthesizeOnce(
+                    speechKey = speechKey,
+                    region = region,
+                    text = text,
+                    voice = voice,
+                    speed = speed,
+                    context = context
+                )
+            } catch (t: Throwable) {
+                last = t
+
+                if (
+                    attempt < 3 &&
+                    isRetryable(t)
+                ) {
+                    AppDiagnostics.error(
+                        context,
+                        "Azure transient failure; retry $attempt/3",
+                        t
+                    )
+                    Thread.sleep(450L * attempt)
+                    continue
+                }
+
+                throw t
+            }
+        }
+
+        throw IllegalStateException(
+            "Azure Speech: ${last?.message ?: "неизвестная ошибка"}",
+            last
+        )
     }
 
     private fun synthesizeOnce(
@@ -64,7 +121,8 @@ object AzureTtsClient {
             "https://$region.tts.speech.microsoft.com/cognitiveservices/v1"
 
         val connection =
-            URL(endpoint).openConnection() as HttpURLConnection
+            URL(endpoint)
+                .openConnection() as HttpURLConnection
 
         try {
             connection.requestMethod = "POST"
@@ -93,11 +151,18 @@ object AzureTtsClient {
             )
 
             val rate = ratePercent(speed)
+
+            // Collapse all line/paragraph whitespace into one space. Azure still
+            // receives punctuation, but paragraph markup can no longer create a
+            // multi-second dramatic pause by itself.
+            val normalizedText =
+                normalizeForSpeech(text)
+
             val ssml =
                 "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='ru-RU'>" +
                     "<voice name='${escapeXml(voice)}'>" +
                     "<prosody rate='$rate'>" +
-                    escapeXml(text) +
+                    escapeXml(normalizedText) +
                     "</prosody></voice></speak>"
 
             connection.outputStream.use {
@@ -108,7 +173,9 @@ object AzureTtsClient {
                 )
             }
 
-            val code = connection.responseCode
+            val code =
+                connection.responseCode
+
             AppDiagnostics.info(
                 context,
                 "Azure TTS HTTP $code"
@@ -149,6 +216,7 @@ object AzureTtsClient {
                 context,
                 "Azure audio received: ${bytes.size} bytes"
             )
+
             return bytes
         } finally {
             connection.disconnect()
@@ -163,14 +231,16 @@ object AzureTtsClient {
         require(speechKey.isNotBlank()) {
             "Azure Speech key не указан"
         }
-        require(region.matches(Regex("[a-z0-9-]+"))) {
-            "Azure region не указан"
+        require(SettingsStore.isValidAzureRegion(region)) {
+            "Azure region должен быть точным идентификатором, например switzerlandnorth"
         }
 
         val endpoint =
             "https://$region.tts.speech.microsoft.com/cognitiveservices/voices/list"
+
         val connection =
-            URL(endpoint).openConnection() as HttpURLConnection
+            URL(endpoint)
+                .openConnection() as HttpURLConnection
 
         try {
             connection.requestMethod = "GET"
@@ -181,7 +251,9 @@ object AzureTtsClient {
                 speechKey
             )
 
-            val code = connection.responseCode
+            val code =
+                connection.responseCode
+
             AppDiagnostics.info(
                 context,
                 "Azure test HTTP $code"
@@ -216,8 +288,12 @@ object AzureTtsClient {
         text: String,
         maxChars: Int = MAX_TEXT_CHARS
     ): List<String> {
-        val value = text.trim()
-        if (value.length <= maxChars) {
+        val value =
+            normalizeForSpeech(text)
+
+        if (
+            value.length <= maxChars
+        ) {
             return listOf(value)
         }
 
@@ -225,21 +301,24 @@ object AzureTtsClient {
             mutableListOf<String>()
         var cursor = 0
 
-        while (cursor < value.length) {
+        while (
+            cursor < value.length
+        ) {
             var end =
                 minOf(
                     cursor + maxChars,
                     value.length
                 )
 
-            if (end < value.length) {
+            if (
+                end < value.length
+            ) {
                 val sentence =
                     value.lastIndexOfAny(
                         charArrayOf(
                             '.',
                             '!',
-                            '?',
-                            '\n'
+                            '?'
                         ),
                         end - 1
                     )
@@ -273,7 +352,9 @@ object AzureTtsClient {
                     end
                 ).trim()
 
-            if (chunk.isNotBlank()) {
+            if (
+                chunk.isNotBlank()
+            ) {
                 result += chunk
             }
 
@@ -281,6 +362,65 @@ object AzureTtsClient {
         }
 
         return result
+    }
+
+    private fun normalizeForSpeech(
+        value: String
+    ): String =
+        value
+            .replace(
+                Regex("\\s+"),
+                " "
+            )
+            .trim()
+
+    private fun isRetryable(
+        error: Throwable
+    ): Boolean {
+        var current: Throwable? =
+            error
+
+        while (
+            current != null
+        ) {
+            if (
+                current is
+                    UnknownHostException ||
+                current is
+                    SocketTimeoutException ||
+                current is
+                    SocketException
+            ) {
+                return true
+            }
+
+            val message =
+                current.message
+                    ?.lowercase(Locale.US)
+                    .orEmpty()
+
+            if (
+                message.contains(
+                    "software caused connection abort"
+                ) ||
+                message.contains(
+                    "connection reset"
+                ) ||
+                message.contains(
+                    "broken pipe"
+                ) ||
+                message.contains(
+                    "timeout"
+                )
+            ) {
+                return true
+            }
+
+            current =
+                current.cause
+        }
+
+        return false
     }
 
     private fun ratePercent(
