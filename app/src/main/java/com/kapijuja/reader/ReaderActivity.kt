@@ -43,6 +43,7 @@ class ReaderActivity : Activity() {
     private lateinit var engineButton: Button
     private lateinit var voiceButton: Button
     private lateinit var speedButton: Button
+    private lateinit var saveAudioButton: Button
     private lateinit var exportProgress: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var resultText: TextView
@@ -350,13 +351,25 @@ class ReaderActivity : Activity() {
             }
         )
 
-        val saveAudio = Button(this).apply {
+        saveAudioButton = Button(this).apply {
             text = "Сохранить MP3"
             textSize = 14f
-            setOnClickListener { requestAudioExport() }
+            setOnClickListener {
+                requestAudioExport()
+            }
         }
-        KapijujaUiTheme.button(this, saveAudio)
-        saveRow.addView(saveAudio, LinearLayout.LayoutParams(0, dp(50), 1f))
+        KapijujaUiTheme.button(
+            this,
+            saveAudioButton
+        )
+        saveRow.addView(
+            saveAudioButton,
+            LinearLayout.LayoutParams(
+                0,
+                dp(50),
+                1f
+            )
+        )
         player.addView(saveRow)
 
         exportProgress = ProgressBar(
@@ -1719,6 +1732,18 @@ class ReaderActivity : Activity() {
                     "Движок"
             }
 
+        if (::saveAudioButton.isInitialized) {
+            saveAudioButton.text =
+                if (
+                    engine ==
+                    SettingsStore.ENGINE_GOOGLE
+                ) {
+                    "Сохранить WAV"
+                } else {
+                    "Сохранить MP3"
+                }
+        }
+
         val voice = SettingsStore.voice(this)
         voiceButton.text =
             VoiceCatalog.staticVoices(engine)
@@ -1787,6 +1812,33 @@ class ReaderActivity : Activity() {
                 chooseAudioDestination()
             }
 
+            SettingsStore.ENGINE_GOOGLE -> {
+                if (
+                    SettingsStore.googleApiKey(this).isBlank()
+                ) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Google Gemini TTS")
+                        .setMessage(
+                            "Введите Google Gemini API key в Настройках."
+                        )
+                        .setNegativeButton("Отмена", null)
+                        .setPositiveButton("Настройки") { _, _ ->
+                            startActivity(
+                                Intent(
+                                    this,
+                                    SettingsActivity::class.java
+                                )
+                            )
+                        }
+                        .show()
+                    return
+                }
+
+                pendingExportEngine =
+                    SettingsStore.ENGINE_GOOGLE
+                chooseAudioDestination()
+            }
+
             SettingsStore.ENGINE_AZURE -> {
                 if (
                     SettingsStore.azureSpeechKey(this).isBlank() ||
@@ -1819,8 +1871,8 @@ class ReaderActivity : Activity() {
                 AlertDialog.Builder(this)
                     .setTitle("MP3-экспорт")
                     .setMessage(
-                        "В этой версии MP3-экспорт работает для OpenAI, Microsoft Edge и Azure Speech. " +
-                            "Android/RHVoice, Silero и Google получат собственный экспорт после подключения соответствующего runtime."
+                        "В этой версии аудиоэкспорт работает для OpenAI, Microsoft Edge, Azure Speech и Google Gemini. " +
+                            "Google сохраняет WAV, остальные облачные движки — MP3."
                     )
                     .setPositiveButton("OK", null)
                     .show()
@@ -1829,13 +1881,36 @@ class ReaderActivity : Activity() {
     }
 
     private fun chooseAudioDestination() {
+        val engine =
+            pendingExportEngine
+                ?: SettingsStore.engine(this)
+
+        val isGoogle =
+            engine ==
+                SettingsStore.ENGINE_GOOGLE
+
         startActivityForResult(
-            Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE)
-                type = "audio/mpeg"
+            Intent(
+                Intent.ACTION_CREATE_DOCUMENT
+            ).apply {
+                addCategory(
+                    Intent.CATEGORY_OPENABLE
+                )
+                type =
+                    if (isGoogle) {
+                        "audio/wav"
+                    } else {
+                        "audio/mpeg"
+                    }
+
                 putExtra(
                     Intent.EXTRA_TITLE,
-                    safeFileName(title) + ".mp3"
+                    safeFileName(title) +
+                        if (isGoogle) {
+                            ".wav"
+                        } else {
+                            ".mp3"
+                        }
                 )
             },
             REQ_SAVE_AUDIO
@@ -1905,6 +1980,14 @@ class ReaderActivity : Activity() {
         uri: Uri,
         engine: String
     ) {
+        if (
+            engine ==
+            SettingsStore.ENGINE_GOOGLE
+        ) {
+            exportGoogleWav(uri)
+            return
+        }
+
         pauseSpeech()
         player.visibility = View.VISIBLE
         listenButton.text = "Создаётся MP3…"
@@ -2095,6 +2178,166 @@ class ReaderActivity : Activity() {
                                 ?: "Неизвестная ошибка"
                         )
                         .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }.start()
+    }
+
+    private fun exportGoogleWav(
+        uri: Uri
+    ) {
+        pauseSpeech()
+        player.visibility = View.VISIBLE
+        listenButton.text =
+            "Создаётся WAV…"
+
+        exportProgress.visibility =
+            View.VISIBLE
+        progressText.visibility =
+            View.VISIBLE
+        exportProgress.progress = 0
+        progressText.text =
+            "Создание WAV: 0%"
+        resultText.text = ""
+
+        val voice =
+            SettingsStore
+                .voice(this)
+                .ifBlank {
+                    "Gacrux"
+                }
+
+        val chunks =
+            GoogleGeminiTtsClient
+                .splitForApi(text)
+
+        Thread {
+            try {
+                val pcm =
+                    java.io.ByteArrayOutputStream()
+
+                chunks.forEachIndexed {
+                        index,
+                        chunk ->
+
+                    val bytes =
+                        GoogleGeminiTtsClient
+                            .synthesizePcm(
+                                apiKey =
+                                    SettingsStore
+                                        .googleApiKey(
+                                            this
+                                        ),
+                                text = chunk,
+                                voice = voice,
+                                instructions =
+                                    SettingsStore
+                                        .googleInstructions(
+                                            this
+                                        ),
+                                context =
+                                    this@ReaderActivity
+                            )
+
+                    pcm.write(bytes)
+
+                    val percent =
+                        (
+                            (index + 1) *
+                                100 /
+                                chunks.size
+                            )
+                            .coerceIn(
+                                0,
+                                100
+                            )
+
+                    mainHandler.post {
+                        exportProgress.progress =
+                            percent
+                        progressText.text =
+                            "Создание WAV: ${index + 1}/${chunks.size} • $percent%"
+                        listenButton.text =
+                            "WAV $percent%"
+                    }
+                }
+
+                val wav =
+                    GoogleGeminiTtsClient
+                        .pcmToWav(
+                            pcm.toByteArray()
+                        )
+
+                contentResolver
+                    .openOutputStream(uri)
+                    ?.use {
+                        it.write(wav)
+                        it.flush()
+                    }
+                    ?: error(
+                        "Не удалось открыть файл"
+                    )
+
+                mainHandler.post {
+                    exportProgress.progress =
+                        100
+                    progressText.text =
+                        "WAV полностью записан • 100%"
+                    listenButton.text =
+                        "Слушать"
+                    resultText.text =
+                        "WAV сохранён • Google Gemini TTS"
+
+                    AlertDialog.Builder(this)
+                        .setTitle("WAV готов")
+                        .setMessage(
+                            "Файл полностью создан и записан."
+                        )
+                        .setPositiveButton(
+                            "OK",
+                            null
+                        )
+                        .show()
+
+                    mainHandler.postDelayed(
+                        {
+                            exportProgress.visibility =
+                                View.GONE
+                            progressText.visibility =
+                                View.GONE
+                        },
+                        4500
+                    )
+                }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(
+                    this@ReaderActivity,
+                    "Google WAV export failed",
+                    t
+                )
+
+                mainHandler.post {
+                    listenButton.text =
+                        "Слушать"
+                    progressText.text =
+                        "Ошибка создания WAV"
+                    resultText.text =
+                        t.message ?:
+                            "Ошибка Google Gemini"
+
+                    AlertDialog.Builder(this)
+                        .setTitle(
+                            "WAV не создан"
+                        )
+                        .setMessage(
+                            t.message ?:
+                                "Неизвестная ошибка"
+                        )
+                        .setPositiveButton(
+                            "OK",
+                            null
+                        )
                         .show()
                 }
             }
