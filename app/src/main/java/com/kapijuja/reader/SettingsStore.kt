@@ -14,6 +14,8 @@ object SettingsStore {
     private const val KEY_AZURE_DEFAULT_MIGRATED = "azure_default_migrated"
     private const val KEY_GOOGLE_API_KEY = "google_api_key"
     private const val KEY_GOOGLE_INSTRUCTIONS = "google_instructions"
+    private const val KEY_UI_LANGUAGE = "ui_language"
+    private const val KEY_LIBRARY_LIMIT = "library_limit"
 
     const val DEFAULT_ENGINE = "android:com.google.android.tts"
     const val ENGINE_ANDROID_SYSTEM = "android:default"
@@ -25,6 +27,13 @@ object SettingsStore {
     const val ENGINE_GOOGLE = "cloud:google"
 
     const val DEFAULT_AZURE_REGION = "switzerlandnorth"
+
+    const val UI_LANGUAGE_SYSTEM = "system"
+    const val UI_LANGUAGE_RU = "ru"
+    const val UI_LANGUAGE_PL = "pl"
+    const val UI_LANGUAGE_EN = "en"
+
+    const val DEFAULT_LIBRARY_LIMIT = 200
 
     const val RHVOICE_PACKAGE = "com.github.olga_yakovleva.rhvoice.android"
     const val ENGINE_RHVOICE = "android:com.github.olga_yakovleva.rhvoice.android"
@@ -228,6 +237,36 @@ object SettingsStore {
                 value.trim()
             )
             .apply()
+    }
+
+    fun uiLanguage(context: Context): String =
+        prefs(context).getString(KEY_UI_LANGUAGE, UI_LANGUAGE_SYSTEM)
+            ?: UI_LANGUAGE_SYSTEM
+
+    fun setUiLanguage(context: Context, value: String) {
+        val normalized =
+            if (value in setOf(
+                    UI_LANGUAGE_SYSTEM,
+                    UI_LANGUAGE_RU,
+                    UI_LANGUAGE_PL,
+                    UI_LANGUAGE_EN
+                )
+            ) {
+                value
+            } else {
+                UI_LANGUAGE_SYSTEM
+            }
+        prefs(context).edit().putString(KEY_UI_LANGUAGE, normalized).apply()
+    }
+
+    fun libraryLimit(context: Context): Int =
+        prefs(context).getInt(KEY_LIBRARY_LIMIT, DEFAULT_LIBRARY_LIMIT)
+
+    fun setLibraryLimit(context: Context, value: Int) {
+        val allowed = setOf(0, 100, 200, 500, 1000, 5000, 10000)
+        val normalized =
+            if (value in allowed) value else DEFAULT_LIBRARY_LIMIT
+        prefs(context).edit().putInt(KEY_LIBRARY_LIMIT, normalized).apply()
     }
 
     private fun voiceKey(engine: String): String =
