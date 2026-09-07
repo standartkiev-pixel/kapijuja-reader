@@ -87,6 +87,7 @@ class ReaderActivity : Activity() {
     private var tapDownX = 0f
     private var tapDownY = 0f
     private var tapDownAt = 0L
+    private var builtLanguage = ""
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -109,6 +110,7 @@ class ReaderActivity : Activity() {
         super.onCreate(savedInstanceState)
         KapijujaUiTheme.applyWindow(this)
         PlaybackBridge.controller = playbackController
+        builtLanguage = UiText.language(this)
         loadInput()
         segments = segmentText(text)
         buildScreen()
@@ -116,6 +118,11 @@ class ReaderActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (builtLanguage.isNotBlank() && builtLanguage != UiText.language(this)) {
+            recreate()
+            return
+        }
+
         val selectedEngine = SettingsStore.engine(this)
         val selectedVoice = SettingsStore.voice(this)
 
@@ -480,7 +487,12 @@ class ReaderActivity : Activity() {
         highlight(index)
         listenButton.text = if (wasPlaying) "Готовится…" else "Слушать отсюда"
         playPause.text = t("Продолжить", "Resume")
-        resultText.text = "Старт: предложение ${index + 1} из ${segments.size}"
+        resultText.text =
+            t(
+                "Старт: предложение ${index + 1} из ${segments.size}",
+                "Start: zdanie ${index + 1} z ${segments.size}",
+                "Start: sentence ${index + 1} of ${segments.size}"
+            )
 
         AppDiagnostics.info(
             this,
@@ -505,7 +517,11 @@ class ReaderActivity : Activity() {
             SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
             SettingsStore.ENGINE_SILERO ->
                 showUnavailable(
-                    "Silero пока не встроен в APK. Этот пункт больше не перебрасывает в настройки; локальный runtime подключим отдельно."
+                    t(
+                        "Silero пока не встроен в основной APK. Движок оставлен как отдельный эксперимент.",
+                        "Silero nie jest wbudowany w główny APK. Silnik pozostaje osobnym eksperymentem.",
+                        "Silero is not bundled in the base APK. It remains a separate experiment."
+                    )
                 )
             SettingsStore.ENGINE_AZURE ->
                 startAzureFrom(currentSegment)
@@ -513,7 +529,13 @@ class ReaderActivity : Activity() {
                 startGoogleFrom(currentSegment)
             else -> {
                 if (!engine.startsWith("android:")) {
-                    showUnavailable("Неизвестный движок: $engine")
+                    showUnavailable(
+                        t(
+                            "Неизвестный движок: $engine",
+                            "Nieznany silnik: $engine",
+                            "Unknown engine: $engine"
+                        )
+                    )
                     return
                 }
                 startAndroidTts()
@@ -527,7 +549,7 @@ class ReaderActivity : Activity() {
         playPause.text = t("Продолжить", "Resume")
         resultText.text = message
         AlertDialog.Builder(this)
-            .setTitle("Движок пока не активен")
+            .setTitle(t("Движок пока не активен", "Silnik nie jest jeszcze aktywny", "Engine not active yet"))
             .setMessage(message)
             .setPositiveButton("OK", null)
             .show()
@@ -596,7 +618,11 @@ class ReaderActivity : Activity() {
                 )
                 Toast.makeText(
                     this,
-                    "TTS движок не запустился",
+                    t(
+                        "TTS движок не запустился",
+                        "Nie udało się uruchomić silnika TTS",
+                        "TTS engine failed to start"
+                    ),
                     Toast.LENGTH_LONG
                 ).show()
             }
