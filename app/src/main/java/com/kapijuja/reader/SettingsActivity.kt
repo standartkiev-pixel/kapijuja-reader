@@ -228,15 +228,38 @@ class SettingsActivity : Activity() {
             dynamic += "android:${it.name}" to "Android: ${it.label ?: it.name}"
         }
         dynamic += SettingsStore.ENGINE_OPENAI to "OpenAI — GPT-4o Mini TTS"
-        dynamic += SettingsStore.ENGINE_SILERO to "Silero TTS v5.5 Russian"
-        dynamic += SettingsStore.ENGINE_EDGE to "Microsoft Edge — тест"
-        dynamic += SettingsStore.ENGINE_AZURE to "Microsoft Azure — тест"
-        dynamic += SettingsStore.ENGINE_GOOGLE to "Google Cloud TTS — тест"
+        dynamic += SettingsStore.ENGINE_EDGE to "Microsoft Edge — бесплатно"
+        dynamic += SettingsStore.ENGINE_SILERO to "Silero v5.5 — скоро"
+        dynamic += SettingsStore.ENGINE_AZURE to "Microsoft Azure — нужен credential"
+        dynamic += SettingsStore.ENGINE_GOOGLE to "Google — нужен credential"
+
+        val notReady = setOf(
+            SettingsStore.ENGINE_SILERO,
+            SettingsStore.ENGINE_AZURE,
+            SettingsStore.ENGINE_GOOGLE
+        )
 
         AlertDialog.Builder(this)
             .setTitle("Выберите движок")
             .setItems(dynamic.map { it.second }.toTypedArray()) { _, index ->
                 val id = dynamic[index].first
+                if (id in notReady) {
+                    val message = when (id) {
+                        SettingsStore.ENGINE_SILERO ->
+                            "Silero пока не встроен в APK: модель и локальный runtime подключим отдельным этапом."
+                        SettingsStore.ENGINE_AZURE ->
+                            "Azure требует Speech key и регион. До добавления этих полей движок не активируется."
+                        else ->
+                            "Google cloud/AI требует отдельный Google credential. До его подключения движок не активируется."
+                    }
+                    AlertDialog.Builder(this)
+                        .setTitle("Движок пока не активен")
+                        .setMessage(message)
+                        .setPositiveButton("OK", null)
+                        .show()
+                    return@setItems
+                }
+
                 SettingsStore.setEngine(this, id)
                 SettingsStore.ensureDefaultVoice(this, id, VoiceCatalog.defaultVoice(id))
                 engineButton.text = dynamic[index].second
@@ -353,7 +376,7 @@ class SettingsActivity : Activity() {
             engine == SettingsStore.ENGINE_SILERO ->
                 "Голоса v5_5_ru заведены в каталог. Локальный runtime подключим следующим этапом."
             engine == SettingsStore.ENGINE_EDGE ->
-                "Экспериментальный сетевой движок. Runtime пока не подключён."
+                "Microsoft Edge Read Aloud подключён: бесплатная сетевая озвучка без API key. Это неофициальный endpoint Edge, поэтому протокол может измениться."
             engine == SettingsStore.ENGINE_AZURE ->
                 "Каталог русских Azure-голосов есть; runtime/credential пока не подключён."
             engine == SettingsStore.ENGINE_GOOGLE ->
