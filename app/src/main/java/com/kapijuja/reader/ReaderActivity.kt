@@ -2049,7 +2049,7 @@ class ReaderActivity : Activity() {
 
                     if (status != TextToSpeech.SUCCESS) {
                         ttsExportLatches.remove(utteranceId)
-                        error("Android TTS не начал создание WAV")
+                        error(t("Android TTS не начал создание WAV", "Android TTS nie rozpoczął tworzenia WAV", "Android TTS did not start WAV synthesis"))
                     }
 
                     while (!latch.await(250, java.util.concurrent.TimeUnit.MILLISECONDS)) {
@@ -2060,10 +2060,10 @@ class ReaderActivity : Activity() {
 
                     if (utteranceId in ttsExportFailures) {
                         ttsExportFailures.remove(utteranceId)
-                        error("Android TTS не смог создать WAV-фрагмент")
+                        error(t("Android TTS не смог создать WAV-фрагмент", "Android TTS nie utworzył fragmentu WAV", "Android TTS could not create a WAV fragment"))
                     }
                     if (!file.exists() || file.length() < 44) {
-                        error("Android TTS вернул пустой WAV-фрагмент")
+                        error(t("Android TTS вернул пустой WAV-фрагмент", "Android TTS zwrócił pusty fragment WAV", "Android TTS returned an empty WAV fragment"))
                     }
 
                     files += file
@@ -2073,6 +2073,7 @@ class ReaderActivity : Activity() {
                         progressText.text =
                             t(
                                 "Создание WAV: ${index + 1}/${chunks.size} • $percent%",
+                                "Tworzenie WAV: ${index + 1}/${chunks.size} • $percent%",
                                 "Creating WAV: ${index + 1}/${chunks.size} • $percent%"
                             )
                     }
@@ -2092,13 +2093,13 @@ class ReaderActivity : Activity() {
 
                 mainHandler.post {
                     exportProgress.progress = 100
-                    progressText.text = t("WAV полностью записан • 100%", "WAV complete • 100%")
-                    resultText.text = t("WAV сохранён • Android TTS", "WAV saved • Android TTS")
+                    progressText.text = t("WAV полностью записан • 100%", "WAV zapisany • 100%", "WAV complete • 100%")
+                    resultText.text = t("WAV сохранён • Android TTS", "WAV zapisany • Android TTS", "WAV saved • Android TTS")
                     restoreAudioExportButton()
 
                     AlertDialog.Builder(this)
-                        .setTitle(t("WAV готов", "WAV ready"))
-                        .setMessage(t("Файл полностью создан и записан.", "The file has been created and saved."))
+                        .setTitle(t("WAV готов", "WAV gotowy", "WAV ready"))
+                        .setMessage(t("Файл полностью создан и записан.", "Plik został utworzony i zapisany.", "The file has been created and saved."))
                         .setPositiveButton("OK", null)
                         .show()
 
@@ -2121,11 +2122,15 @@ class ReaderActivity : Activity() {
                     AppDiagnostics.error(this@ReaderActivity, "Android WAV export failed", t)
                     mainHandler.post {
                         restoreAudioExportButton()
-                        progressText.text = t("Ошибка создания WAV", "WAV export error")
-                        resultText.text = t.message ?: t("Ошибка Android TTS", "Android TTS error")
+                        progressText.text = t("Ошибка создания WAV", "Błąd tworzenia WAV", "WAV export error")
+                        val message = UiText.localizeMessage(
+                            this,
+                            t.message ?: t("Ошибка Android TTS", "Błąd Android TTS", "Android TTS error")
+                        )
+                        resultText.text = message
                         AlertDialog.Builder(this)
-                            .setTitle(t("WAV не создан", "WAV not created"))
-                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setTitle(t("WAV не создан", "Nie utworzono WAV", "WAV not created"))
+                            .setMessage(message)
                             .setPositiveButton("OK", null)
                             .show()
                     }
