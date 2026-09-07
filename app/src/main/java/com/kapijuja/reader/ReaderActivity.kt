@@ -2611,120 +2611,107 @@ class ReaderActivity : Activity() {
     ) {
         pauseSpeech()
         player.visibility = View.VISIBLE
-        listenButton.text =
-            "Создаётся WAV…"
+        listenButton.text = "Создаётся WAV…"
         beginAudioExport("WAV")
 
         val voice =
             SettingsStore
                 .voice(this)
-                .ifBlank {
-                    "Gacrux"
-                }
+                .ifBlank { "Gacrux" }
 
-        val chunks =
-            GoogleGeminiTtsClient
-                .splitForApi(text)
+        val chunks = GoogleGeminiTtsClient.splitForApi(text)
 
         exportThread = Thread {
+            val raw =
+                File(
+                    cacheDir,
+                    "google_pcm_${System.nanoTime()}.raw"
+                )
+
             try {
-                val pcm =
-                    java.io.ByteArrayOutputStream()
+                raw.outputStream().buffered().use { pcm ->
+                    chunks.forEachIndexed { index, chunk ->
+                        checkExportCancelled()
 
-                chunks.forEachIndexed {
-                        index,
-                        chunk ->
-
-                    checkExportCancelled()
-
-                    val bytes =
-                        GoogleGeminiTtsClient
-                            .synthesizePcm(
-                                apiKey =
-                                    SettingsStore
-                                        .googleApiKey(
-                                            this
-                                        ),
+                        val bytes =
+                            GoogleGeminiTtsClient.synthesizePcm(
+                                apiKey = SettingsStore.googleApiKey(this),
                                 text = chunk,
                                 voice = voice,
-                                instructions =
-                                    SettingsStore
-                                        .googleInstructions(
-                                            this
-                                        ),
-                                context =
-                                    this@ReaderActivity
+                                instructions = SettingsStore.googleInstructions(this),
+                                context = this@ReaderActivity
                             )
 
-                    checkExportCancelled()
-                    pcm.write(bytes)
+                        checkExportCancelled()
+                        pcm.write(bytes)
+                        pcm.flush()
 
-                    val percent =
-                        (
-                            (index + 1) *
-                                100 /
-                                chunks.size
-                            )
-                            .coerceIn(
-                                0,
-                                100
-                            )
+                        val percent =
+                            ((index + 1) * 90 / chunks.size)
+                                .coerceIn(0, 90)
 
-                    mainHandler.post {
-                        exportProgress.progress =
-                            percent
-                        progressText.text =
-                            t("Создание WAV: ${index + 1}/${chunks.size} • $percent%", "Creating WAV: ${index + 1}/${chunks.size} • $percent%")
-                        listenButton.text =
-                            "WAV $percent%"
+                        mainHandler.post {
+                            exportProgress.progress = percent
+                            progressText.text =
+                                t(
+                                    "Создание WAV: ${index + 1}/${chunks.size} • $percent%",
+                                    "Tworzenie WAV: ${index + 1}/${chunks.size} • $percent%",
+                                    "Creating WAV: ${index + 1}/${chunks.size} • $percent%"
+                                )
+                        }
                     }
                 }
 
                 checkExportCancelled()
-                val wav =
-                    GoogleGeminiTtsClient
-                        .pcmToWav(
-                            pcm.toByteArray()
-                        )
-
-                contentResolver
-                    .openOutputStream(uri)
-                    ?.use {
-                        it.write(wav)
-                        it.flush()
-                    }
-                    ?: error(
-                        "Не удалось открыть файл"
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    WavTools.pcmToWavTo(
+                        pcmFile = raw,
+                        output = output,
+                        sampleRate = GoogleGeminiTtsClient.PCM_SAMPLE_RATE,
+                        channels = GoogleGeminiTtsClient.PCM_CHANNELS,
+                        bitsPerSample = GoogleGeminiTtsClient.PCM_BITS_PER_SAMPLE
                     )
+                } ?: error(
+                    t(
+                        "Не удалось открыть файл",
+                        "Nie udało się otworzyć pliku",
+                        "Could not open file"
+                    )
+                )
 
+                checkExportCancelled()
                 mainHandler.post {
-                    exportProgress.progress =
-                        100
+                    exportProgress.progress = 100
                     progressText.text =
-                        "WAV полностью записан • 100%"
-                    listenButton.text =
-                        "Слушать"
+                        t(
+                            "WAV полностью записан • 100%",
+                            "WAV zapisany • 100%",
+                            "WAV complete • 100%"
+                        )
                     resultText.text =
-                        "WAV сохранён • Google Gemini TTS"
+                        t(
+                            "WAV сохранён • Google Gemini TTS",
+                            "WAV zapisany • Google Gemini TTS",
+                            "WAV saved • Google Gemini TTS"
+                        )
                     restoreAudioExportButton()
 
                     AlertDialog.Builder(this)
-                        .setTitle("WAV готов")
+                        .setTitle(t("WAV готов", "WAV gotowy", "WAV ready"))
                         .setMessage(
-                            "Файл полностью создан и записан."
+                            t(
+                                "Файл полностью создан и записан.",
+                                "Plik został utworzony i zapisany.",
+                                "The file has been created and saved."
+                            )
                         )
-                        .setPositiveButton(
-                            "OK",
-                            null
-                        )
+                        .setPositiveButton("OK", null)
                         .show()
 
                     mainHandler.postDelayed(
                         {
-                            exportProgress.visibility =
-                                View.GONE
-                            progressText.visibility =
-                                View.GONE
+                            exportProgress.visibility = View.GONE
+                            progressText.visibility = View.GONE
                         },
                         4500
                     )
@@ -2733,33 +2720,53 @@ class ReaderActivity : Activity() {
                 mainHandler.post { showExportCancelled("WAV") }
             } catch (_: InterruptedException) {
                 mainHandler.post { showExportCancelled("WAV") }
-            } catch (t: Throwable) {
+            } catch (error: Throwable) {
                 if (exportCancelled) {
                     mainHandler.post { showExportCancelled("WAV") }
                 } else {
                     AppDiagnostics.error(
                         this@ReaderActivity,
                         "Google WAV export failed",
-                        t
+                        error
                     )
 
                     mainHandler.post {
                         restoreAudioExportButton()
-                        listenButton.text = "Слушать"
-                        progressText.text = t("Ошибка создания WAV", "WAV export error")
-                        resultText.text = t.message ?: t("Ошибка Google Gemini", "Google Gemini error")
+                        val message =
+                            UiText.localizeMessage(
+                                this,
+                                error.message ?: t(
+                                    "Ошибка Google Gemini",
+                                    "Błąd Google Gemini",
+                                    "Google Gemini error"
+                                )
+                            )
+                        progressText.text =
+                            t(
+                                "Ошибка создания WAV",
+                                "Błąd tworzenia WAV",
+                                "WAV export error"
+                            )
+                        resultText.text = message
 
                         AlertDialog.Builder(this)
-                            .setTitle(t("WAV не создан", "WAV not created"))
-                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setTitle(
+                                t(
+                                    "WAV не создан",
+                                    "Nie utworzono WAV",
+                                    "WAV not created"
+                                )
+                            )
+                            .setMessage(message)
                             .setPositiveButton("OK", null)
                             .show()
                     }
                 }
+            } finally {
+                raw.delete()
             }
         }.also { it.start() }
     }
-
     private fun safeFileName(value: String): String =
         value
             .replace(
