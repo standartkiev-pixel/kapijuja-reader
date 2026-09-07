@@ -11,8 +11,8 @@ android {
         applicationId = "com.kapijuja.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.1.2"
+        versionCode = 4
+        versionName = "0.1.3"
     }
 
     signingConfigs {
@@ -42,4 +42,9 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_1_8.toString()
     }
+}
+
+
+dependencies {
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
