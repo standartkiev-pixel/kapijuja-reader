@@ -28,6 +28,9 @@ class SettingsActivity : Activity() {
     private lateinit var googleKeyInput: EditText
     private lateinit var googleInstructionInput: EditText
     private lateinit var serviceText: TextView
+    private lateinit var languageButton: Button
+    private lateinit var libraryLimitButton: Button
+    private lateinit var libraryInfoText: TextView
 
     private var probeTts: TextToSpeech? = null
     private var installedEngines: List<TextToSpeech.EngineInfo> = emptyList()
@@ -84,6 +87,23 @@ class SettingsActivity : Activity() {
 
         SettingsStore.migrateDefaults(this)
 
+        root.addView(
+            sectionTitle(
+                t(
+                    "Язык интерфейса",
+                    "Język interfejsu",
+                    "Interface language"
+                )
+            )
+        )
+        languageButton = Button(this).apply {
+            text = languageSettingLabel()
+            textSize = 17f
+            setOnClickListener { chooseLanguage() }
+        }
+        KapijujaUiTheme.button(this, languageButton)
+        root.addView(languageButton, fullButton())
+
         root.addView(sectionTitle(t("Движок", "Engine")))
         val currentEngine = SettingsStore.engine(this)
         SettingsStore.ensureDefaultVoice(this, currentEngine, VoiceCatalog.defaultVoice(currentEngine))
@@ -110,6 +130,31 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.secondary(statusText)
         root.addView(statusText)
+
+        root.addView(
+            sectionTitle(
+                t(
+                    "Библиотека",
+                    "Biblioteka",
+                    "Library"
+                )
+            )
+        )
+        libraryLimitButton = Button(this).apply {
+            text = libraryLimitLabel(SettingsStore.libraryLimit(this@SettingsActivity))
+            textSize = 17f
+            setOnClickListener { chooseLibraryLimit() }
+        }
+        KapijujaUiTheme.button(this, libraryLimitButton)
+        root.addView(libraryLimitButton, fullButton())
+
+        libraryInfoText = TextView(this).apply {
+            textSize = 13f
+            setPadding(dp(4), 0, dp(4), dp(10))
+        }
+        KapijujaUiTheme.secondary(libraryInfoText)
+        root.addView(libraryInfoText)
+        refreshLibraryInfo()
 
         root.addView(sectionTitle("OpenAI GPT-4o Mini TTS"))
         val note = TextView(this).apply {
@@ -368,6 +413,132 @@ class SettingsActivity : Activity() {
                 AppDiagnostics.error(this, "Android TTS engine probe failed: status=$status")
             }
         }
+    }
+
+    private fun chooseLanguage() {
+        val ids =
+            arrayOf(
+                SettingsStore.UI_LANGUAGE_SYSTEM,
+                SettingsStore.UI_LANGUAGE_RU,
+                SettingsStore.UI_LANGUAGE_PL,
+                SettingsStore.UI_LANGUAGE_EN
+            )
+        val labels =
+            arrayOf(
+                t(
+                    "Автоматически — язык телефона",
+                    "Automatycznie — język telefonu",
+                    "Automatic — phone language"
+                ),
+                "Русский",
+                "Polski",
+                "English"
+            )
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                t(
+                    "Язык интерфейса",
+                    "Język interfejsu",
+                    "Interface language"
+                )
+            )
+            .setSingleChoiceItems(
+                labels,
+                ids.indexOf(SettingsStore.uiLanguage(this))
+                    .coerceAtLeast(0)
+            ) { dialog, which ->
+                persistSettings()
+                SettingsStore.setUiLanguage(this, ids[which])
+                dialog.dismiss()
+                recreate()
+            }
+            .show()
+    }
+
+    private fun languageSettingLabel(): String {
+        val selected = SettingsStore.uiLanguage(this)
+        return when (selected) {
+            SettingsStore.UI_LANGUAGE_RU -> "Русский"
+            SettingsStore.UI_LANGUAGE_PL -> "Polski"
+            SettingsStore.UI_LANGUAGE_EN -> "English"
+            else ->
+                t(
+                    "Автоматически: ${UiText.languageLabel(this)}",
+                    "Automatycznie: ${UiText.languageLabel(this)}",
+                    "Automatic: ${UiText.languageLabel(this)}"
+                )
+        }
+    }
+
+    private fun chooseLibraryLimit() {
+        val values = intArrayOf(100, 200, 500, 1000, 5000, 10000, 0)
+        val labels = values.map { libraryLimitLabel(it) }.toTypedArray()
+        val current = SettingsStore.libraryLimit(this)
+        val selected = values.indexOf(current).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                t(
+                    "Сколько текстов хранить",
+                    "Ile tekstów przechowywać",
+                    "How many texts to keep"
+                )
+            )
+            .setSingleChoiceItems(labels, selected) { dialog, which ->
+                val value = values[which]
+                SettingsStore.setLibraryLimit(this, value)
+                val pruned = LibraryStore.enforceLimits(this)
+                libraryLimitButton.text = libraryLimitLabel(value)
+                refreshLibraryInfo(pruned)
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun libraryLimitLabel(value: Int): String =
+        if (value == 0) {
+            t(
+                "Все — максимум 1 ГБ",
+                "Wszystkie — maks. 1 GB",
+                "All — max 1 GB"
+            )
+        } else {
+            t(
+                "Хранить последние $value",
+                "Przechowuj ostatnie $value",
+                "Keep latest $value"
+            )
+        }
+
+    private fun refreshLibraryInfo(
+        pruned: LibraryPruneResult? = null
+    ) {
+        if (!::libraryInfoText.isInitialized) return
+
+        val items = LibraryStore.list(this).size
+        val bytes = LibraryStore.totalBytes(this)
+        val mb = bytes / (1024.0 * 1024.0)
+        val base =
+            t(
+                "Сейчас: $items текстов, %.1f МБ. Даже в режиме «все» действует предел 1 ГБ. На главном экране тексты показываются порциями, поэтому длинный список не должен тормозить прокрутку.",
+                "Teraz: $items tekstów, %.1f MB. Nawet w trybie „wszystkie” obowiązuje limit 1 GB. Na ekranie głównym teksty są wyświetlane partiami, więc długa lista nie powinna spowalniać przewijania.",
+                "Now: $items texts, %.1f MB. Even in “all” mode there is a 1 GB cap. The main screen renders texts in batches so a long list should not slow scrolling."
+            ).format(Locale.US, mb)
+
+        val removed =
+            if (pruned != null && pruned.removedItems > 0) {
+                "\n" +
+                    t(
+                        "Удалено старых текстов: ${pruned.removedItems}.",
+                        "Usunięto starych tekstów: ${pruned.removedItems}.",
+                        "Old texts removed: ${pruned.removedItems}."
+                    )
+            } else {
+                ""
+            }
+
+        libraryInfoText.text = base + removed
     }
 
     private fun chooseEngine() {
@@ -851,6 +1022,9 @@ class SettingsActivity : Activity() {
     }
 
     private fun t(ru: String, en: String) = UiText.get(this, ru, en)
+
+    private fun t(ru: String, pl: String, en: String) =
+        UiText.get(this, ru, pl, en)
 
     private fun dp(v: Int) = KapijujaUiTheme.dp(this, v)
 }
