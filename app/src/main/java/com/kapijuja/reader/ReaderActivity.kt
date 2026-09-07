@@ -869,13 +869,29 @@ class ReaderActivity : Activity() {
         resultText.text =
             when (engine) {
                 SettingsStore.ENGINE_EDGE ->
-                    "Microsoft Edge: буферизация…"
+                    t(
+                        "Microsoft Edge: буферизация…",
+                        "Microsoft Edge: buforowanie…",
+                        "Microsoft Edge: buffering…"
+                    )
                 SettingsStore.ENGINE_AZURE ->
-                    "Azure Speech: буферизация…"
+                    t(
+                        "Azure Speech: буферизация…",
+                        "Azure Speech: buforowanie…",
+                        "Azure Speech: buffering…"
+                    )
                 SettingsStore.ENGINE_GOOGLE ->
-                    "Google Gemini: буферизация…"
+                    t(
+                        "Google Gemini: буферизация…",
+                        "Google Gemini: buforowanie…",
+                        "Google Gemini: buffering…"
+                    )
                 else ->
-                    "OpenAI: буферизация…"
+                    t(
+                        "OpenAI: буферизация…",
+                        "OpenAI: buforowanie…",
+                        "OpenAI: buffering…"
+                    )
             }
 
         playCloudChunk(
@@ -1069,15 +1085,24 @@ class ReaderActivity : Activity() {
 
                     isPlaying = false
                     playPause.text =
-                        "Продолжить"
+                        t("Продолжить", "Wznów", "Resume")
                     listenButton.text =
                         "Слушать"
-                    resultText.text =
-                        t.message ?: "Ошибка TTS"
+                    val message =
+                        UiText.localizeMessage(
+                            this,
+                            t.message
+                                ?: t(
+                                    "Ошибка TTS",
+                                    "Błąd TTS",
+                                    "TTS error"
+                                )
+                        )
+                    resultText.text = message
 
                     Toast.makeText(
                         this,
-                        t.message ?: "Ошибка TTS",
+                        message,
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -1313,7 +1338,11 @@ class ReaderActivity : Activity() {
                         listenButton.text =
                             "Слушать"
                         resultText.text =
-                            "Ошибка воспроизведения."
+                            t(
+                                t("Ошибка воспроизведения.", "Błąd odtwarzania.", "Playback error."),
+                                "Błąd odtwarzania.",
+                                "Playback error."
+                            )
                         true
                     }
 
@@ -1391,7 +1420,7 @@ class ReaderActivity : Activity() {
             listenButton.text =
                 "Слушать"
             resultText.text =
-                "Ошибка воспроизведения."
+                t("Ошибка воспроизведения.", "Błąd odtwarzania.", "Playback error.")
 
             AppDiagnostics.error(
                 this@ReaderActivity,
