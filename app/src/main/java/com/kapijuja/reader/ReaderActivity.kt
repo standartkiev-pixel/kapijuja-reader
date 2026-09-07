@@ -75,6 +75,13 @@ class ReaderActivity : Activity() {
     private var openAiConfirmedHash: Int? = null
     private var openAiRunAudioMillis = 0L
     private var pendingExportEngine: String? = null
+    @Volatile private var exportCancelled = false
+    @Volatile private var exportInProgress = false
+    private var exportThread: Thread? = null
+    private val ttsExportLatches =
+        java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CountDownLatch>()
+    private val ttsExportFailures =
+        java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     private var tapDownX = 0f
     private var tapDownY = 0f
@@ -347,6 +354,34 @@ class ReaderActivity : Activity() {
         voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(52), 1f))
         player.addView(voiceRow)
 
+        exportProgress = ProgressBar(
+            this,
+            null,
+            android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            max = 100
+            progress = 0
+            visibility = View.GONE
+        }
+        KapijujaUiTheme.progress(exportProgress)
+        player.addView(
+            exportProgress,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(16)
+            ).apply {
+                topMargin = dp(7)
+            }
+        )
+
+        progressText = TextView(this).apply {
+            textSize = 13f
+            visibility = View.GONE
+            setPadding(dp(3), dp(3), dp(3), 0)
+        }
+        KapijujaUiTheme.secondary(progressText)
+        player.addView(progressText)
+
         val saveRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -370,7 +405,7 @@ class ReaderActivity : Activity() {
             text = t("Сохранить MP3", "Save MP3")
             textSize = 14f
             setOnClickListener {
-                requestAudioExport()
+                if (exportInProgress) cancelAudioExport() else requestAudioExport()
             }
         }
         KapijujaUiTheme.button(
@@ -386,34 +421,6 @@ class ReaderActivity : Activity() {
             )
         )
         player.addView(saveRow)
-
-        exportProgress = ProgressBar(
-            this,
-            null,
-            android.R.attr.progressBarStyleHorizontal
-        ).apply {
-            max = 100
-            progress = 0
-            visibility = View.GONE
-        }
-        KapijujaUiTheme.progress(exportProgress)
-        player.addView(
-            exportProgress,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(10)
-            ).apply {
-                topMargin = dp(7)
-            }
-        )
-
-        progressText = TextView(this).apply {
-            textSize = 13f
-            visibility = View.GONE
-            setPadding(dp(3), dp(3), dp(3), 0)
-        }
-        KapijujaUiTheme.secondary(progressText)
-        player.addView(progressText)
 
         resultText = TextView(this).apply {
             textSize = 13f
@@ -548,11 +555,21 @@ class ReaderActivity : Activity() {
                 var appliedVoice = tts?.voice?.name.orEmpty()
 
                 if (configuredVoice.isNotBlank()) {
+                    val available = tts?.voices.orEmpty()
                     val voice =
-                        tts?.voices?.firstOrNull { it.name == configuredVoice }
+                        available.firstOrNull { it.name == configuredVoice }
+                            ?: available.firstOrNull {
+                                it.locale?.language == "ru" &&
+                                    it.name.contains("network", ignoreCase = true)
+                            }
+                            ?: available.firstOrNull { it.locale?.language == "ru" }
+
                     if (voice != null) {
                         tts?.voice = voice
                         appliedVoice = voice.name
+                        if (voice.name != configuredVoice) {
+                            SettingsStore.setVoice(this, engineId, voice.name)
+                        }
                         AppDiagnostics.info(
                             this,
                             "Android TTS voice applied: engine=$engineId voice=${voice.name} locale=${voice.locale}"
@@ -562,11 +579,6 @@ class ReaderActivity : Activity() {
                             this,
                             "Configured Android voice not found: engine=$engineId voice=$configuredVoice"
                         )
-                        Toast.makeText(
-                            this,
-                            "Выбранный голос не найден; используется голос по умолчанию.",
-                            Toast.LENGTH_LONG
-                        ).show()
                     }
                 }
 
@@ -605,6 +617,7 @@ class ReaderActivity : Activity() {
         tts?.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
+                    if (utteranceId?.startsWith("file_") == true) return
                     val index =
                         utteranceId?.substringAfter("seg_")?.toIntOrNull()
                             ?: return
@@ -618,6 +631,10 @@ class ReaderActivity : Activity() {
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    if (utteranceId?.startsWith("file_") == true) {
+                        ttsExportLatches[utteranceId]?.countDown()
+                        return
+                    }
                     val index =
                         utteranceId?.substringAfter("seg_")?.toIntOrNull()
                             ?: return
@@ -634,6 +651,11 @@ class ReaderActivity : Activity() {
                 }
 
                 override fun onError(utteranceId: String?) {
+                    if (utteranceId?.startsWith("file_") == true) {
+                        ttsExportFailures.add(utteranceId)
+                        ttsExportLatches[utteranceId]?.countDown()
+                        return
+                    }
                     mainHandler.post {
                         isPlaying = false
                         playPause.text = t("Продолжить", "Resume")
@@ -1765,12 +1787,12 @@ class ReaderActivity : Activity() {
         if (::saveAudioButton.isInitialized) {
             saveAudioButton.text =
                 if (
-                    engine ==
-                    SettingsStore.ENGINE_GOOGLE
+                    engine == SettingsStore.ENGINE_GOOGLE ||
+                    engine.startsWith("android:")
                 ) {
-                    "Сохранить WAV"
+                    t("Сохранить WAV", "Save WAV")
                 } else {
-                    "Сохранить MP3"
+                    t("Сохранить MP3", "Save MP3")
                 }
         }
 
@@ -1781,6 +1803,229 @@ class ReaderActivity : Activity() {
                 ?.label
                 ?.take(20)
                 ?: voice.ifBlank { "Голос" }.take(20)
+    }
+
+    private class ExportCancelledException : RuntimeException()
+
+    private fun beginAudioExport(format: String) {
+        exportCancelled = false
+        exportInProgress = true
+        saveAudioButton.isEnabled = true
+        saveAudioButton.text =
+            t("Отменить $format", "Cancel $format")
+        exportProgress.visibility = View.VISIBLE
+        progressText.visibility = View.VISIBLE
+        exportProgress.progress = 0
+        progressText.text =
+            t("Создание $format: 0%", "Creating $format: 0%")
+        resultText.text = ""
+    }
+
+    private fun restoreAudioExportButton() {
+        exportInProgress = false
+        exportThread = null
+        saveAudioButton.isEnabled = true
+        updateEngineLabels()
+    }
+
+    private fun cancelAudioExport() {
+        if (!exportInProgress) return
+        exportCancelled = true
+        saveAudioButton.isEnabled = false
+        saveAudioButton.text =
+            t("Отменяется…", "Cancelling…")
+        progressText.text =
+            t("Отмена создания файла…", "Cancelling audio export…")
+        tts?.stop()
+        ttsExportLatches.values.forEach { it.countDown() }
+        exportThread?.interrupt()
+    }
+
+    private fun checkExportCancelled() {
+        if (exportCancelled || Thread.currentThread().isInterrupted) {
+            throw ExportCancelledException()
+        }
+    }
+
+    private fun showExportCancelled(format: String) {
+        restoreAudioExportButton()
+        progressText.text =
+            t("$format отменён", "$format export cancelled")
+        resultText.text =
+            t("Создание аудиофайла отменено.", "Audio export cancelled.")
+        mainHandler.postDelayed(
+            {
+                if (!exportInProgress) {
+                    exportProgress.visibility = View.GONE
+                    progressText.visibility = View.GONE
+                }
+            },
+            2200
+        )
+    }
+
+    private fun splitForAndroidFile(
+        value: String,
+        maxChars: Int = 2600
+    ): List<String> {
+        val pieces = segmentText(value).map { it.spoken.trim() }.filter { it.isNotBlank() }
+        if (pieces.isEmpty()) return emptyList()
+
+        val result = mutableListOf<String>()
+        val builder = StringBuilder()
+
+        for (piece in pieces) {
+            if (builder.isNotEmpty() && builder.length + 1 + piece.length > maxChars) {
+                result += builder.toString()
+                builder.setLength(0)
+            }
+
+            if (piece.length > maxChars) {
+                if (builder.isNotEmpty()) {
+                    result += builder.toString()
+                    builder.setLength(0)
+                }
+                var start = 0
+                while (start < piece.length) {
+                    val end = minOf(start + maxChars, piece.length)
+                    result += piece.substring(start, end)
+                    start = end
+                }
+            } else {
+                if (builder.isNotEmpty()) builder.append(' ')
+                builder.append(piece)
+            }
+        }
+
+        if (builder.isNotEmpty()) result += builder.toString()
+        return result
+    }
+
+    private fun exportAndroidWav(uri: Uri) {
+        pauseSpeech()
+        player.visibility = View.VISIBLE
+        beginAudioExport("WAV")
+
+        if (!ttsReady) {
+            initAndroidTts {
+                startAndroidWavExport(uri)
+            }
+        } else {
+            startAndroidWavExport(uri)
+        }
+    }
+
+    private fun startAndroidWavExport(uri: Uri) {
+        val chunks = splitForAndroidFile(text)
+        if (chunks.isEmpty()) {
+            restoreAudioExportButton()
+            resultText.text = t("Пустой текст", "Empty text")
+            return
+        }
+
+        exportThread = Thread {
+            val dir = File(cacheDir, "android_tts_export").apply { mkdirs() }
+            val files = mutableListOf<File>()
+
+            try {
+                chunks.forEachIndexed { index, chunk ->
+                    checkExportCancelled()
+
+                    val file = File(dir, "part_${System.nanoTime()}_$index.wav")
+                    val utteranceId = "file_${System.nanoTime()}_$index"
+                    val latch = java.util.concurrent.CountDownLatch(1)
+                    ttsExportLatches[utteranceId] = latch
+                    ttsExportFailures.remove(utteranceId)
+
+                    val status =
+                        tts?.synthesizeToFile(
+                            chunk,
+                            null,
+                            file,
+                            utteranceId
+                        ) ?: TextToSpeech.ERROR
+
+                    if (status != TextToSpeech.SUCCESS) {
+                        ttsExportLatches.remove(utteranceId)
+                        error("Android TTS не начал создание WAV")
+                    }
+
+                    while (!latch.await(250, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+                        checkExportCancelled()
+                    }
+                    ttsExportLatches.remove(utteranceId)
+                    checkExportCancelled()
+
+                    if (utteranceId in ttsExportFailures) {
+                        ttsExportFailures.remove(utteranceId)
+                        error("Android TTS не смог создать WAV-фрагмент")
+                    }
+                    if (!file.exists() || file.length() < 44) {
+                        error("Android TTS вернул пустой WAV-фрагмент")
+                    }
+
+                    files += file
+                    val percent = ((index + 1) * 90 / chunks.size).coerceIn(0, 90)
+                    mainHandler.post {
+                        exportProgress.progress = percent
+                        progressText.text =
+                            t(
+                                "Создание WAV: ${index + 1}/${chunks.size} • $percent%",
+                                "Creating WAV: ${index + 1}/${chunks.size} • $percent%"
+                            )
+                    }
+                }
+
+                checkExportCancelled()
+                val wav = WavTools.join(files)
+                checkExportCancelled()
+
+                contentResolver.openOutputStream(uri)?.use {
+                    it.write(wav)
+                    it.flush()
+                } ?: error("Не удалось открыть файл")
+
+                mainHandler.post {
+                    exportProgress.progress = 100
+                    progressText.text = t("WAV полностью записан • 100%", "WAV complete • 100%")
+                    resultText.text = t("WAV сохранён • Android TTS", "WAV saved • Android TTS")
+                    restoreAudioExportButton()
+
+                    AlertDialog.Builder(this)
+                        .setTitle(t("WAV готов", "WAV ready"))
+                        .setMessage(t("Файл полностью создан и записан.", "The file has been created and saved."))
+                        .setPositiveButton("OK", null)
+                        .show()
+
+                    mainHandler.postDelayed(
+                        {
+                            exportProgress.visibility = View.GONE
+                            progressText.visibility = View.GONE
+                        },
+                        4500
+                    )
+                }
+            } catch (_: ExportCancelledException) {
+                mainHandler.post { showExportCancelled("WAV") }
+            } catch (_: InterruptedException) {
+                mainHandler.post { showExportCancelled("WAV") }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(this@ReaderActivity, "Android WAV export failed", t)
+                mainHandler.post {
+                    restoreAudioExportButton()
+                    progressText.text = t("Ошибка создания WAV", "WAV export error")
+                    resultText.text = t.message ?: t("Ошибка Android TTS", "Android TTS error")
+                    AlertDialog.Builder(this)
+                        .setTitle(t("WAV не создан", "WAV not created"))
+                        .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            } finally {
+                ttsExportLatches.clear()
+                files.forEach { it.delete() }
+            }
+        }.also { it.start() }
     }
 
     private fun requestTextExport() {
@@ -1898,14 +2143,21 @@ class ReaderActivity : Activity() {
             }
 
             else -> {
-                AlertDialog.Builder(this)
-                    .setTitle("MP3-экспорт")
-                    .setMessage(
-                        "В этой версии аудиоэкспорт работает для OpenAI, Microsoft Edge, Azure Speech и Google Gemini. " +
-                            "Google сохраняет WAV, остальные облачные движки — MP3."
-                    )
-                    .setPositiveButton("OK", null)
-                    .show()
+                if (engine.startsWith("android:")) {
+                    pendingExportEngine = engine
+                    chooseAudioDestination()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle(t("Аудиоэкспорт", "Audio export"))
+                        .setMessage(
+                            t(
+                                "Для этого движка аудиоэкспорт пока недоступен.",
+                                "Audio export is not available for this engine yet."
+                            )
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
             }
         }
     }
@@ -1915,9 +2167,9 @@ class ReaderActivity : Activity() {
             pendingExportEngine
                 ?: SettingsStore.engine(this)
 
-        val isGoogle =
-            engine ==
-                SettingsStore.ENGINE_GOOGLE
+        val isWav =
+            engine == SettingsStore.ENGINE_GOOGLE ||
+                engine.startsWith("android:")
 
         startActivityForResult(
             Intent(
@@ -1927,7 +2179,7 @@ class ReaderActivity : Activity() {
                     Intent.CATEGORY_OPENABLE
                 )
                 type =
-                    if (isGoogle) {
+                    if (isWav) {
                         "audio/wav"
                     } else {
                         "audio/mpeg"
@@ -1936,7 +2188,7 @@ class ReaderActivity : Activity() {
                 putExtra(
                     Intent.EXTRA_TITLE,
                     safeFileName(title) +
-                        if (isGoogle) {
+                        if (isWav) {
                             ".wav"
                         } else {
                             ".mp3"
@@ -2010,23 +2262,19 @@ class ReaderActivity : Activity() {
         uri: Uri,
         engine: String
     ) {
-        if (
-            engine ==
-            SettingsStore.ENGINE_GOOGLE
-        ) {
+        if (engine == SettingsStore.ENGINE_GOOGLE) {
             exportGoogleWav(uri)
+            return
+        }
+        if (engine.startsWith("android:")) {
+            exportAndroidWav(uri)
             return
         }
 
         pauseSpeech()
         player.visibility = View.VISIBLE
         listenButton.text = "Создаётся MP3…"
-
-        exportProgress.visibility = View.VISIBLE
-        progressText.visibility = View.VISIBLE
-        exportProgress.progress = 0
-        progressText.text = "Создание MP3: 0%"
-        resultText.text = ""
+        beginAudioExport("MP3")
 
         val voice =
             SettingsStore.voice(this).ifBlank {
@@ -2049,12 +2297,13 @@ class ReaderActivity : Activity() {
                     OpenAiTtsClient.splitForApi(text)
             }
 
-        Thread {
+        exportThread = Thread {
             try {
                 contentResolver
                     .openOutputStream(uri)
                     ?.use { output ->
                         chunks.forEachIndexed { index, chunk ->
+                            checkExportCancelled()
                             val bytes =
                                 when (engine) {
                                     SettingsStore.ENGINE_OPENAI ->
@@ -2107,6 +2356,8 @@ class ReaderActivity : Activity() {
                                         )
                                 }
 
+                            checkExportCancelled()
+
                             output.write(
                                 if (index == 0) {
                                     bytes
@@ -2141,6 +2392,7 @@ class ReaderActivity : Activity() {
                     progressText.text =
                         "MP3 полностью записан • 100%"
                     listenButton.text = "Слушать"
+                    restoreAudioExportButton()
 
                     val costLine =
                         if (engine ==
@@ -2184,6 +2436,10 @@ class ReaderActivity : Activity() {
                         4500
                     )
                 }
+            } catch (_: ExportCancelledException) {
+                mainHandler.post { showExportCancelled("MP3") }
+            } catch (_: InterruptedException) {
+                mainHandler.post { showExportCancelled("MP3") }
             } catch (t: Throwable) {
                 AppDiagnostics.error(
                     this@ReaderActivity,
@@ -2191,6 +2447,7 @@ class ReaderActivity : Activity() {
                     t
                 )
                 mainHandler.post {
+                    restoreAudioExportButton()
                     listenButton.text = "Слушать"
                     exportProgress.visibility =
                         View.VISIBLE
@@ -2211,7 +2468,7 @@ class ReaderActivity : Activity() {
                         .show()
                 }
             }
-        }.start()
+        }.also { it.start() }
     }
 
     private fun exportGoogleWav(
@@ -2221,15 +2478,7 @@ class ReaderActivity : Activity() {
         player.visibility = View.VISIBLE
         listenButton.text =
             "Создаётся WAV…"
-
-        exportProgress.visibility =
-            View.VISIBLE
-        progressText.visibility =
-            View.VISIBLE
-        exportProgress.progress = 0
-        progressText.text =
-            "Создание WAV: 0%"
-        resultText.text = ""
+        beginAudioExport("WAV")
 
         val voice =
             SettingsStore
@@ -2242,7 +2491,7 @@ class ReaderActivity : Activity() {
             GoogleGeminiTtsClient
                 .splitForApi(text)
 
-        Thread {
+        exportThread = Thread {
             try {
                 val pcm =
                     java.io.ByteArrayOutputStream()
@@ -2250,6 +2499,8 @@ class ReaderActivity : Activity() {
                 chunks.forEachIndexed {
                         index,
                         chunk ->
+
+                    checkExportCancelled()
 
                     val bytes =
                         GoogleGeminiTtsClient
@@ -2270,6 +2521,7 @@ class ReaderActivity : Activity() {
                                     this@ReaderActivity
                             )
 
+                    checkExportCancelled()
                     pcm.write(bytes)
 
                     val percent =
@@ -2293,6 +2545,7 @@ class ReaderActivity : Activity() {
                     }
                 }
 
+                checkExportCancelled()
                 val wav =
                     GoogleGeminiTtsClient
                         .pcmToWav(
@@ -2318,6 +2571,7 @@ class ReaderActivity : Activity() {
                         "Слушать"
                     resultText.text =
                         "WAV сохранён • Google Gemini TTS"
+                    restoreAudioExportButton()
 
                     AlertDialog.Builder(this)
                         .setTitle("WAV готов")
@@ -2340,6 +2594,10 @@ class ReaderActivity : Activity() {
                         4500
                     )
                 }
+            } catch (_: ExportCancelledException) {
+                mainHandler.post { showExportCancelled("WAV") }
+            } catch (_: InterruptedException) {
+                mainHandler.post { showExportCancelled("WAV") }
             } catch (t: Throwable) {
                 AppDiagnostics.error(
                     this@ReaderActivity,
@@ -2348,6 +2606,7 @@ class ReaderActivity : Activity() {
                 )
 
                 mainHandler.post {
+                    restoreAudioExportButton()
                     listenButton.text =
                         "Слушать"
                     progressText.text =
@@ -2371,7 +2630,7 @@ class ReaderActivity : Activity() {
                         .show()
                 }
             }
-        }.start()
+        }.also { it.start() }
     }
 
     private fun safeFileName(value: String): String =
