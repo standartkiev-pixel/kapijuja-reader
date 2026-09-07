@@ -60,6 +60,10 @@ class ReaderActivity : Activity() {
     private var mediaPlayer: MediaPlayer? = null
     private var activeTempFile: File? = null
     private var generationToken = 0
+    private val prefetchedCloudFiles =
+        java.util.concurrent.ConcurrentHashMap<Int, File>()
+    private val prefetchingCloudSegments =
+        java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
 
     private var segments: List<Segment> = emptyList()
     private var currentSegment = 0
@@ -470,9 +474,7 @@ class ReaderActivity : Activity() {
             SettingsStore.ENGINE_AZURE ->
                 startAzureFrom(currentSegment)
             SettingsStore.ENGINE_GOOGLE ->
-                showUnavailable(
-                    "Google TTS/AI требует отдельный Google credential. Сейчас этот профиль не активируется без него."
-                )
+                startGoogleFrom(currentSegment)
             else -> {
                 if (!engine.startsWith("android:")) {
                     showUnavailable("Неизвестный движок: $engine")
@@ -734,261 +736,261 @@ class ReaderActivity : Activity() {
         )
     }
 
-    private fun startCloudFrom(index: Int, engine: String) {
+    private fun startGoogleFrom(index: Int) {
+        val key =
+            SettingsStore.googleApiKey(this)
+
+        if (key.isBlank()) {
+            AlertDialog.Builder(this)
+                .setTitle("Google Gemini TTS")
+                .setMessage(
+                    "Введите Google Gemini API key в Настройках."
+                )
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Настройки") { _, _ ->
+                    startActivity(
+                        Intent(
+                            this,
+                            SettingsActivity::class.java
+                        )
+                    )
+                }
+                .show()
+            return
+        }
+
+        startCloudFrom(
+            index,
+            SettingsStore.ENGINE_GOOGLE
+        )
+    }
+
+    private fun startCloudFrom(
+        index: Int,
+        engine: String
+    ) {
         if (segments.isEmpty()) return
 
         tts?.stop()
         ttsReady = false
         stopMediaOnly()
+        clearCloudPrefetch()
         generationToken += 1
 
         val token = generationToken
         isPlaying = true
         playPause.text = "Пауза"
         listenButton.text = "Готовится…"
+
         resultText.text =
             when (engine) {
                 SettingsStore.ENGINE_EDGE ->
-                    "Microsoft Edge: получение аудио…"
+                    "Microsoft Edge: буферизация…"
                 SettingsStore.ENGINE_AZURE ->
-                    "Azure Speech: получение аудио…"
+                    "Azure Speech: буферизация…"
+                SettingsStore.ENGINE_GOOGLE ->
+                    "Google Gemini: буферизация…"
                 else ->
-                    "OpenAI: получение аудио…"
+                    "OpenAI: буферизация…"
             }
 
-        playCloudSegment(
-            index.coerceIn(0, segments.lastIndex),
-            token,
-            engine
+        playCloudChunk(
+            startIndex =
+                index.coerceIn(
+                    0,
+                    segments.lastIndex
+                ),
+            token = token,
+            engine = engine
         )
     }
 
-    private fun playCloudSegment(
-        index: Int,
+    private fun buildCloudChunk(
+        startIndex: Int,
+        maxChars: Int = 720
+    ): CloudChunk {
+        val start =
+            startIndex.coerceIn(
+                0,
+                segments.lastIndex
+            )
+
+        var end = start
+        val builder =
+            StringBuilder()
+
+        for (
+            i in start..segments.lastIndex
+        ) {
+            val sentence =
+                segments[i].spoken
+                    .replace(
+                        Regex("\\s+"),
+                        " "
+                    )
+                    .trim()
+
+            if (sentence.isBlank()) {
+                end = i
+                continue
+            }
+
+            val extra =
+                if (builder.isEmpty()) {
+                    sentence.length
+                } else {
+                    sentence.length + 1
+                }
+
+            if (
+                builder.isNotEmpty() &&
+                builder.length + extra >
+                maxChars
+            ) {
+                break
+            }
+
+            if (builder.isNotEmpty()) {
+                builder.append(' ')
+            }
+
+            builder.append(sentence)
+            end = i
+
+            if (
+                builder.length >=
+                maxChars * 3 / 4
+            ) {
+                break
+            }
+        }
+
+        if (builder.isEmpty()) {
+            builder.append(
+                segments[start].spoken
+                    .replace(
+                        Regex("\\s+"),
+                        " "
+                    )
+                    .trim()
+            )
+            end = start
+        }
+
+        return CloudChunk(
+            startSegment = start,
+            endSegment = end,
+            spoken = builder.toString()
+        )
+    }
+
+    private fun playCloudChunk(
+        startIndex: Int,
         token: Int,
         engine: String
     ) {
-        if (token != generationToken || index !in segments.indices) return
+        if (
+            token != generationToken ||
+            startIndex !in segments.indices
+        ) {
+            return
+        }
 
-        currentSegment = index
-        highlight(index)
+        val chunk =
+            buildCloudChunk(startIndex)
 
-        val segment = segments[index]
-        val voice =
-            SettingsStore.voice(this).ifBlank {
-                when (engine) {
-                    SettingsStore.ENGINE_EDGE,
-                    SettingsStore.ENGINE_AZURE ->
-                        "ru-RU-DmitryNeural"
-                    else ->
-                        "cedar"
-                }
-            }
+        currentSegment =
+            chunk.startSegment
+        highlight(
+            chunk.startSegment
+        )
+
+        val cached =
+            prefetchedCloudFiles.remove(
+                chunk.startSegment
+            )
+
+        if (
+            cached != null &&
+            cached.exists()
+        ) {
+            AppDiagnostics.info(
+                this,
+                "Cloud prebuffer hit: engine=$engine start=${chunk.startSegment} end=${chunk.endSegment} bytes=${cached.length()}"
+            )
+            playCloudFile(
+                chunk = chunk,
+                file = cached,
+                token = token,
+                engine = engine
+            )
+            return
+        }
+
+        listenButton.text = "Готовится…"
 
         Thread {
             try {
                 val bytes =
-                    when (engine) {
-                        SettingsStore.ENGINE_OPENAI ->
-                            OpenAiTtsClient.synthesize(
-                                apiKey = SettingsStore.openAiKey(this),
-                                text = segment.spoken,
-                                voice = voice,
-                                instructions =
-                                    SettingsStore.openAiInstructions(this),
-                                speed = speechRate,
-                                context = this@ReaderActivity
-                            )
-
-                        SettingsStore.ENGINE_EDGE ->
-                            EdgeTtsClient.synthesize(
-                                text = segment.spoken,
-                                voice = voice,
-                                speed = speechRate,
-                                context = this@ReaderActivity
-                            )
-
-                        SettingsStore.ENGINE_AZURE ->
-                            AzureTtsClient.synthesize(
-                                speechKey =
-                                    SettingsStore.azureSpeechKey(
-                                        this
-                                    ),
-                                region =
-                                    SettingsStore.azureRegion(
-                                        this
-                                    ),
-                                text = segment.spoken,
-                                voice = voice,
-                                speed = speechRate,
-                                context = this@ReaderActivity
-                            )
-
-                        else ->
-                            error("Unsupported cloud engine: $engine")
-                    }
-
-                if (token != generationToken) return@Thread
-
-                val prefix =
-                    when (engine) {
-                        SettingsStore.ENGINE_EDGE ->
-                            "edge"
-                        SettingsStore.ENGINE_AZURE ->
-                            "azure"
-                        else ->
-                            "openai"
-                    }
-                val file =
-                    File(
-                        cacheDir,
-                        "${prefix}_tts_${token}_${index}.mp3"
+                    synthesizeCloudChunk(
+                        engine = engine,
+                        text = chunk.spoken
                     )
-                file.writeBytes(bytes)
+
+                if (
+                    token != generationToken
+                ) {
+                    return@Thread
+                }
+
+                val file =
+                    writeCloudTempFile(
+                        engine = engine,
+                        token = token,
+                        startSegment =
+                            chunk.startSegment,
+                        bytes = bytes
+                    )
 
                 mainHandler.post {
-                    if (token != generationToken) {
+                    if (
+                        token !=
+                        generationToken
+                    ) {
                         file.delete()
                         return@post
                     }
 
-                    stopMediaOnly()
-                    activeTempFile = file
-
-                    try {
-                        mediaPlayer =
-                            MediaPlayer().apply {
-                                setDataSource(file.absolutePath)
-                                setOnCompletionListener {
-                                    it.release()
-                                    mediaPlayer = null
-
-                                    if (activeTempFile == file) {
-                                        activeTempFile = null
-                                    }
-                                    file.delete()
-
-                                    if (token != generationToken) {
-                                        return@setOnCompletionListener
-                                    }
-
-                                    if (index >= segments.lastIndex) {
-                                        this@ReaderActivity.isPlaying =
-                                            false
-                                        currentSegment = 0
-                                        playPause.text = "Сначала"
-                                        listenButton.text = "Слушать"
-
-                                        resultText.text =
-                                            if (engine ==
-                                                SettingsStore.ENGINE_OPENAI
-                                            ) {
-                                                "Чтение завершено • OpenAI ≈ €${
-                                                    String.format(
-                                                        Locale.US,
-                                                        "%.3f",
-                                                        estimatedOpenAiRunCost()
-                                                    )
-                                                }"
-                                            } else if (
-                                                engine ==
-                                                SettingsStore.ENGINE_EDGE
-                                            ) {
-                                                "Чтение завершено • Microsoft Edge: бесплатно"
-                                            } else {
-                                                "Чтение завершено • Azure Speech"
-                                            }
-                                    } else {
-                                        playCloudSegment(
-                                            index + 1,
-                                            token,
-                                            engine
-                                        )
-                                    }
-                                }
-                                setOnErrorListener { mp, what, extra ->
-                                    AppDiagnostics.error(
-                                        this@ReaderActivity,
-                                        "MediaPlayer error: engine=$engine what=$what extra=$extra fileExists=${file.exists()} size=${file.length()}"
-                                    )
-                                    mp.release()
-                                    mediaPlayer = null
-                                    if (activeTempFile == file) {
-                                        activeTempFile = null
-                                    }
-                                    file.delete()
-                                    this@ReaderActivity.isPlaying =
-                                        false
-                                    playPause.text = "Продолжить"
-                                    listenButton.text = "Слушать"
-                                    resultText.text =
-                                        "Ошибка воспроизведения."
-                                    true
-                                }
-                                prepare()
-
-                                if (engine ==
-                                    SettingsStore.ENGINE_OPENAI
-                                ) {
-                                    openAiRunAudioMillis +=
-                                        duration.toLong()
-                                }
-
-                                start()
-                            }
-
-                        AppDiagnostics.info(
-                            this@ReaderActivity,
-                            "Cloud playback started: engine=$engine segment=$index file=${file.name} bytes=${file.length()}"
-                        )
-                        listenButton.text = "Читается"
-                        resultText.text =
-                            when (engine) {
-                                SettingsStore.ENGINE_OPENAI ->
-                                    "OpenAI • предложение ${index + 1}/${segments.size}"
-                                SettingsStore.ENGINE_EDGE ->
-                                    "Microsoft Edge • предложение ${index + 1}/${segments.size}"
-                                SettingsStore.ENGINE_AZURE ->
-                                    "Azure Speech • предложение ${index + 1}/${segments.size}"
-                                else ->
-                                    "TTS • предложение ${index + 1}/${segments.size}"
-                            }
-                    } catch (t: Throwable) {
-                        if (activeTempFile == file) {
-                            activeTempFile = null
-                        }
-                        file.delete()
-                        mediaPlayer?.release()
-                        mediaPlayer = null
-                        this@ReaderActivity.isPlaying = false
-                        playPause.text = "Продолжить"
-                        listenButton.text = "Слушать"
-                        resultText.text = "Ошибка воспроизведения."
-                        AppDiagnostics.error(
-                            this@ReaderActivity,
-                            "Cloud MediaPlayer setup failed: engine=$engine",
-                            t
-                        )
-                        Toast.makeText(
-                            this@ReaderActivity,
-                            "Ошибка воспроизведения: ${t.message}",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
+                    playCloudFile(
+                        chunk = chunk,
+                        file = file,
+                        token = token,
+                        engine = engine
+                    )
                 }
             } catch (t: Throwable) {
                 AppDiagnostics.error(
                     this@ReaderActivity,
-                    "Cloud TTS segment failed: engine=$engine index=$index",
+                    "Cloud TTS chunk failed: engine=$engine start=${chunk.startSegment} end=${chunk.endSegment}",
                     t
                 )
+
                 mainHandler.post {
-                    if (token != generationToken) return@post
+                    if (
+                        token !=
+                        generationToken
+                    ) {
+                        return@post
+                    }
+
                     isPlaying = false
-                    playPause.text = "Продолжить"
-                    listenButton.text = "Слушать"
+                    playPause.text =
+                        "Продолжить"
+                    listenButton.text =
+                        "Слушать"
                     resultText.text =
                         t.message ?: "Ошибка TTS"
+
                     Toast.makeText(
                         this,
                         t.message ?: "Ошибка TTS",
@@ -999,6 +1001,516 @@ class ReaderActivity : Activity() {
         }.start()
     }
 
+    private fun synthesizeCloudChunk(
+        engine: String,
+        text: String
+    ): ByteArray {
+        val voice =
+            SettingsStore
+                .voice(this)
+                .ifBlank {
+                    when (engine) {
+                        SettingsStore.ENGINE_EDGE,
+                        SettingsStore.ENGINE_AZURE ->
+                            "ru-RU-DmitryNeural"
+                        SettingsStore.ENGINE_GOOGLE ->
+                            "Gacrux"
+                        else ->
+                            "cedar"
+                    }
+                }
+
+        return when (engine) {
+            SettingsStore.ENGINE_OPENAI ->
+                OpenAiTtsClient.synthesize(
+                    apiKey =
+                        SettingsStore
+                            .openAiKey(this),
+                    text = text,
+                    voice = voice,
+                    instructions =
+                        SettingsStore
+                            .openAiInstructions(
+                                this
+                            ),
+                    speed = speechRate,
+                    context =
+                        this@ReaderActivity
+                )
+
+            SettingsStore.ENGINE_EDGE ->
+                EdgeTtsClient.synthesize(
+                    text = text,
+                    voice = voice,
+                    speed = speechRate,
+                    context =
+                        this@ReaderActivity
+                )
+
+            SettingsStore.ENGINE_AZURE ->
+                AzureTtsClient.synthesize(
+                    speechKey =
+                        SettingsStore
+                            .azureSpeechKey(
+                                this
+                            ),
+                    region =
+                        SettingsStore
+                            .azureRegion(this),
+                    text = text,
+                    voice = voice,
+                    speed = speechRate,
+                    context =
+                        this@ReaderActivity
+                )
+
+            SettingsStore.ENGINE_GOOGLE ->
+                GoogleGeminiTtsClient
+                    .synthesizeWav(
+                        apiKey =
+                            SettingsStore
+                                .googleApiKey(
+                                    this
+                                ),
+                        text = text,
+                        voice = voice,
+                        instructions =
+                            SettingsStore
+                                .googleInstructions(
+                                    this
+                                ),
+                        context =
+                            this@ReaderActivity
+                    )
+
+            else ->
+                error(
+                    "Unsupported cloud engine: $engine"
+                )
+        }
+    }
+
+    private fun writeCloudTempFile(
+        engine: String,
+        token: Int,
+        startSegment: Int,
+        bytes: ByteArray
+    ): File {
+        val prefix =
+            when (engine) {
+                SettingsStore.ENGINE_EDGE ->
+                    "edge"
+                SettingsStore.ENGINE_AZURE ->
+                    "azure"
+                SettingsStore.ENGINE_GOOGLE ->
+                    "google"
+                else ->
+                    "openai"
+            }
+
+        val extension =
+            if (
+                engine ==
+                SettingsStore.ENGINE_GOOGLE
+            ) {
+                "wav"
+            } else {
+                "mp3"
+            }
+
+        return File(
+            cacheDir,
+            "${prefix}_tts_${token}_${startSegment}.$extension"
+        ).apply {
+            writeBytes(bytes)
+        }
+    }
+
+    private fun playCloudFile(
+        chunk: CloudChunk,
+        file: File,
+        token: Int,
+        engine: String
+    ) {
+        if (
+            token != generationToken
+        ) {
+            file.delete()
+            return
+        }
+
+        stopMediaOnly()
+        activeTempFile = file
+
+        try {
+            mediaPlayer =
+                MediaPlayer().apply {
+                    setDataSource(
+                        file.absolutePath
+                    )
+
+                    setOnCompletionListener {
+                        it.release()
+                        mediaPlayer = null
+
+                        if (
+                            activeTempFile ==
+                            file
+                        ) {
+                            activeTempFile =
+                                null
+                        }
+
+                        file.delete()
+
+                        if (
+                            token !=
+                            generationToken
+                        ) {
+                            return@setOnCompletionListener
+                        }
+
+                        val next =
+                            chunk.endSegment + 1
+
+                        if (
+                            next >
+                            segments.lastIndex
+                        ) {
+                            this@ReaderActivity
+                                .isPlaying =
+                                false
+                            currentSegment = 0
+                            playPause.text =
+                                "Сначала"
+                            listenButton.text =
+                                "Слушать"
+
+                            resultText.text =
+                                completionText(
+                                    engine
+                                )
+                        } else {
+                            playCloudChunk(
+                                startIndex = next,
+                                token = token,
+                                engine = engine
+                            )
+                        }
+                    }
+
+                    setOnErrorListener {
+                            mp,
+                            what,
+                            extra ->
+                        AppDiagnostics.error(
+                            this@ReaderActivity,
+                            "MediaPlayer error: engine=$engine what=$what extra=$extra fileExists=${file.exists()} size=${file.length()}"
+                        )
+
+                        mp.release()
+                        mediaPlayer = null
+
+                        if (
+                            activeTempFile ==
+                            file
+                        ) {
+                            activeTempFile =
+                                null
+                        }
+
+                        file.delete()
+                        this@ReaderActivity
+                            .isPlaying =
+                            false
+                        playPause.text =
+                            "Продолжить"
+                        listenButton.text =
+                            "Слушать"
+                        resultText.text =
+                            "Ошибка воспроизведения."
+                        true
+                    }
+
+                    prepare()
+
+                    if (
+                        engine ==
+                        SettingsStore.ENGINE_OPENAI
+                    ) {
+                        openAiRunAudioMillis +=
+                            duration.toLong()
+                    }
+
+                    start()
+
+                    scheduleChunkHighlights(
+                        chunk = chunk,
+                        durationMs =
+                            duration.toLong(),
+                        token = token
+                    )
+                }
+
+            AppDiagnostics.info(
+                this@ReaderActivity,
+                "Cloud playback started: engine=$engine start=${chunk.startSegment} end=${chunk.endSegment} file=${file.name} bytes=${file.length()}"
+            )
+
+            listenButton.text =
+                "Читается"
+
+            resultText.text =
+                when (engine) {
+                    SettingsStore.ENGINE_OPENAI ->
+                        "OpenAI • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
+                    SettingsStore.ENGINE_EDGE ->
+                        "Microsoft Edge • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
+                    SettingsStore.ENGINE_AZURE ->
+                        "Azure Speech • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
+                    SettingsStore.ENGINE_GOOGLE ->
+                        "Google Gemini • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
+                    else ->
+                        "TTS"
+                }
+
+            // Free/quota-based engines can safely pre-generate the next block
+            // while this one is playing. OpenAI is intentionally excluded so
+            // pausing does not pay for speech that the user never heard.
+            if (
+                engine !=
+                SettingsStore.ENGINE_OPENAI
+            ) {
+                prefetchCloudChunk(
+                    startIndex =
+                        chunk.endSegment + 1,
+                    token = token,
+                    engine = engine
+                )
+            }
+        } catch (t: Throwable) {
+            if (
+                activeTempFile ==
+                file
+            ) {
+                activeTempFile = null
+            }
+
+            file.delete()
+            mediaPlayer?.release()
+            mediaPlayer = null
+            this@ReaderActivity.isPlaying =
+                false
+            playPause.text =
+                "Продолжить"
+            listenButton.text =
+                "Слушать"
+            resultText.text =
+                "Ошибка воспроизведения."
+
+            AppDiagnostics.error(
+                this@ReaderActivity,
+                "Cloud MediaPlayer setup failed: engine=$engine",
+                t
+            )
+
+            Toast.makeText(
+                this@ReaderActivity,
+                "Ошибка воспроизведения: ${t.message}",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private fun prefetchCloudChunk(
+        startIndex: Int,
+        token: Int,
+        engine: String
+    ) {
+        if (
+            startIndex !in
+            segments.indices ||
+            token != generationToken ||
+            prefetchedCloudFiles
+                .containsKey(
+                    startIndex
+                ) ||
+            !prefetchingCloudSegments
+                .add(startIndex)
+        ) {
+            return
+        }
+
+        val chunk =
+            buildCloudChunk(
+                startIndex
+            )
+
+        Thread {
+            try {
+                val bytes =
+                    synthesizeCloudChunk(
+                        engine = engine,
+                        text = chunk.spoken
+                    )
+
+                if (
+                    token !=
+                    generationToken
+                ) {
+                    return@Thread
+                }
+
+                val file =
+                    writeCloudTempFile(
+                        engine = engine,
+                        token = token,
+                        startSegment =
+                            chunk.startSegment,
+                        bytes = bytes
+                    )
+
+                if (
+                    token ==
+                    generationToken
+                ) {
+                    prefetchedCloudFiles[
+                        chunk.startSegment
+                    ] = file
+
+                    AppDiagnostics.info(
+                        this@ReaderActivity,
+                        "Cloud prebuffer ready: engine=$engine start=${chunk.startSegment} end=${chunk.endSegment} bytes=${file.length()}"
+                    )
+                } else {
+                    file.delete()
+                }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(
+                    this@ReaderActivity,
+                    "Cloud prebuffer failed: engine=$engine start=$startIndex",
+                    t
+                )
+            } finally {
+                prefetchingCloudSegments
+                    .remove(startIndex)
+            }
+        }.start()
+    }
+
+    private fun scheduleChunkHighlights(
+        chunk: CloudChunk,
+        durationMs: Long,
+        token: Int
+    ) {
+        val indices =
+            (
+                chunk.startSegment..
+                    chunk.endSegment
+                ).toList()
+
+        if (
+            indices.size <= 1 ||
+            durationMs <= 0
+        ) {
+            currentSegment =
+                chunk.startSegment
+            highlight(
+                chunk.startSegment
+            )
+            return
+        }
+
+        val weights =
+            indices.map {
+                segments[it].spoken
+                    .count {
+                        ch ->
+                        !ch.isWhitespace()
+                    }
+                    .coerceAtLeast(1)
+            }
+
+        val total =
+            weights.sum()
+                .coerceAtLeast(1)
+
+        var cumulative = 0
+
+        indices.forEachIndexed {
+                position,
+                segmentIndex ->
+
+            val delay =
+                if (position == 0) {
+                    0L
+                } else {
+                    (
+                        durationMs *
+                            cumulative /
+                            total
+                        )
+                }
+
+            mainHandler.postDelayed(
+                {
+                    if (
+                        token ==
+                        generationToken &&
+                        isPlaying
+                    ) {
+                        currentSegment =
+                            segmentIndex
+                        highlight(
+                            segmentIndex
+                        )
+                    }
+                },
+                delay
+            )
+
+            cumulative +=
+                weights[position]
+        }
+    }
+
+    private fun completionText(
+        engine: String
+    ): String =
+        when (engine) {
+            SettingsStore.ENGINE_OPENAI ->
+                "Чтение завершено • OpenAI ≈ €${
+                    String.format(
+                        Locale.US,
+                        "%.3f",
+                        estimatedOpenAiRunCost()
+                    )
+                }"
+
+            SettingsStore.ENGINE_EDGE ->
+                "Чтение завершено • Microsoft Edge: бесплатно"
+
+            SettingsStore.ENGINE_AZURE ->
+                "Чтение завершено • Azure Speech"
+
+            SettingsStore.ENGINE_GOOGLE ->
+                "Чтение завершено • Google Gemini TTS"
+
+            else ->
+                "Чтение завершено."
+        }
+
+    private fun clearCloudPrefetch() {
+        prefetchedCloudFiles
+            .values
+            .forEach {
+                it.delete()
+            }
+
+        prefetchedCloudFiles.clear()
+        prefetchingCloudSegments.clear()
+    }
+
     private fun estimatedOpenAiRunCost(): Double =
         openAiRunAudioMillis / 60_000.0 * 0.013
 
@@ -1006,6 +1518,7 @@ class ReaderActivity : Activity() {
         generationToken += 1
         tts?.stop()
         stopMediaOnly()
+        clearCloudPrefetch()
         isPlaying = false
 
         if (::playPause.isInitialized) {
@@ -1173,6 +1686,8 @@ class ReaderActivity : Activity() {
                     startEdgeFrom(currentSegment)
                 engine == SettingsStore.ENGINE_AZURE ->
                     startAzureFrom(currentSegment)
+                engine == SettingsStore.ENGINE_GOOGLE ->
+                    startGoogleFrom(currentSegment)
                 engine.startsWith("android:") ->
                     startAndroidTts()
             }
@@ -1192,7 +1707,7 @@ class ReaderActivity : Activity() {
                 engine == SettingsStore.ENGINE_AZURE ->
                     "Azure"
                 engine == SettingsStore.ENGINE_GOOGLE ->
-                    "Google"
+                    "Google Gemini"
                 engine == SettingsStore.DEFAULT_ENGINE ->
                     "Android TTS"
                 engine.startsWith("android:") ->
@@ -1704,6 +2219,12 @@ class ReaderActivity : Activity() {
     data class Segment(
         val start: Int,
         val end: Int,
+        val spoken: String
+    )
+
+    data class CloudChunk(
+        val startSegment: Int,
+        val endSegment: Int,
         val spoken: String
     )
 
