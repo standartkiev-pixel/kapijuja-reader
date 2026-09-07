@@ -9,6 +9,8 @@ object SettingsStore {
     private const val KEY_OPENAI_KEY = "openai_key"
     private const val KEY_OPENAI_INSTRUCTIONS = "openai_instructions"
     private const val KEY_CONFIRM_EURO = "confirm_euro"
+    private const val KEY_AZURE_SPEECH_KEY = "azure_speech_key"
+    private const val KEY_AZURE_REGION = "azure_region"
 
     const val DEFAULT_ENGINE = "android:default"
     const val ENGINE_OPENAI = "cloud:openai"
@@ -87,7 +89,49 @@ object SettingsStore {
 
     fun setConfirmEuro(context: Context, value: Double) {
         prefs(context).edit()
-            .putLong(KEY_CONFIRM_EURO, java.lang.Double.doubleToRawLongBits(value.coerceAtLeast(0.0)))
+            .putLong(
+                KEY_CONFIRM_EURO,
+                java.lang.Double.doubleToRawLongBits(
+                    value.coerceAtLeast(0.0)
+                )
+            )
+            .apply()
+    }
+
+    fun azureSpeechKey(context: Context): String =
+        prefs(context)
+            .getString(KEY_AZURE_SPEECH_KEY, "")
+            ?: ""
+
+    fun setAzureSpeechKey(
+        context: Context,
+        value: String
+    ) {
+        prefs(context)
+            .edit()
+            .putString(
+                KEY_AZURE_SPEECH_KEY,
+                value.trim()
+            )
+            .apply()
+    }
+
+    fun azureRegion(context: Context): String =
+        prefs(context)
+            .getString(KEY_AZURE_REGION, "")
+            ?: ""
+
+    fun setAzureRegion(
+        context: Context,
+        value: String
+    ) {
+        prefs(context)
+            .edit()
+            .putString(
+                KEY_AZURE_REGION,
+                value.trim()
+                    .lowercase()
+            )
             .apply()
     }
 
