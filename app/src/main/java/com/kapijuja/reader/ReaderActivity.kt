@@ -77,6 +77,7 @@ class ReaderActivity : Activity() {
     private var pendingExportEngine: String? = null
     @Volatile private var exportCancelled = false
     @Volatile private var exportInProgress = false
+    private var currentExportFormat = "MP3"
     private var exportThread: Thread? = null
     private val ttsExportLatches =
         java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.CountDownLatch>()
@@ -1787,13 +1788,19 @@ class ReaderActivity : Activity() {
 
         if (::saveAudioButton.isInitialized) {
             saveAudioButton.text =
-                if (
+                if (exportInProgress) {
+                    t(
+                        "Отменить $currentExportFormat",
+                        "Anuluj $currentExportFormat",
+                        "Cancel $currentExportFormat"
+                    )
+                } else if (
                     engine == SettingsStore.ENGINE_GOOGLE ||
                     engine.startsWith("android:")
                 ) {
-                    t("Сохранить WAV", "Save WAV")
+                    t("Сохранить WAV", "Zapisz WAV", "Save WAV")
                 } else {
-                    t("Сохранить MP3", "Save MP3")
+                    t("Сохранить MP3", "Zapisz MP3", "Save MP3")
                 }
         }
 
@@ -1811,14 +1818,19 @@ class ReaderActivity : Activity() {
     private fun beginAudioExport(format: String) {
         exportCancelled = false
         exportInProgress = true
+        currentExportFormat = format
         saveAudioButton.isEnabled = true
         saveAudioButton.text =
-            t("Отменить $format", "Cancel $format")
+            t("Отменить $format", "Anuluj $format", "Cancel $format")
         exportProgress.visibility = View.VISIBLE
         progressText.visibility = View.VISIBLE
         exportProgress.progress = 0
         progressText.text =
-            t("Создание $format: 0%", "Creating $format: 0%")
+            t(
+                "Создание $format: 0%",
+                "Tworzenie $format: 0%",
+                "Creating $format: 0%"
+            )
         resultText.text = ""
     }
 
@@ -1834,9 +1846,13 @@ class ReaderActivity : Activity() {
         exportCancelled = true
         saveAudioButton.isEnabled = false
         saveAudioButton.text =
-            t("Отменяется…", "Cancelling…")
+            t("Отменяется…", "Anulowanie…", "Cancelling…")
         progressText.text =
-            t("Отмена создания файла…", "Cancelling audio export…")
+            t(
+                "Отмена создания файла…",
+                "Anulowanie tworzenia pliku…",
+                "Cancelling audio export…"
+            )
         tts?.stop()
         ttsExportLatches.values.forEach { it.countDown() }
         exportThread?.interrupt()
@@ -1851,9 +1867,17 @@ class ReaderActivity : Activity() {
     private fun showExportCancelled(format: String) {
         restoreAudioExportButton()
         progressText.text =
-            t("$format отменён", "$format export cancelled")
+            t(
+                "$format отменён",
+                "Eksport $format anulowany",
+                "$format export cancelled"
+            )
         resultText.text =
-            t("Создание аудиофайла отменено.", "Audio export cancelled.")
+            t(
+                "Создание аудиофайла отменено.",
+                "Tworzenie pliku audio anulowano.",
+                "Audio export cancelled."
+            )
         mainHandler.postDelayed(
             {
                 if (!exportInProgress) {
@@ -1978,13 +2002,16 @@ class ReaderActivity : Activity() {
                 }
 
                 checkExportCancelled()
-                val wav = WavTools.join(files)
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    WavTools.joinTo(files, output)
+                } ?: error(
+                    t(
+                        "Не удалось открыть файл",
+                        "Nie udało się otworzyć pliku",
+                        "Could not open file"
+                    )
+                )
                 checkExportCancelled()
-
-                contentResolver.openOutputStream(uri)?.use {
-                    it.write(wav)
-                    it.flush()
-                } ?: error("Не удалось открыть файл")
 
                 mainHandler.post {
                     exportProgress.progress = 100
@@ -2758,7 +2785,11 @@ class ReaderActivity : Activity() {
         PlaybackBridge.stop(this)
     }
 
-    private fun t(ru: String, en: String) = UiText.get(this, ru, en)
+    private fun t(ru: String, en: String) =
+        UiText.get(this, ru, en)
+
+    private fun t(ru: String, pl: String, en: String) =
+        UiText.get(this, ru, pl, en)
 
     private fun dp(v: Int) =
         KapijujaUiTheme.dp(this, v)
