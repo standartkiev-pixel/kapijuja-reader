@@ -774,22 +774,41 @@ class SettingsActivity : Activity() {
         persistSettings()
         val key = SettingsStore.openAiKey(this)
         if (key.isBlank()) {
-            Toast.makeText(this, "Сначала введите OpenAI API key", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                this,
+                t(
+                    "Сначала введите OpenAI API key",
+                    "Najpierw wprowadź klucz API OpenAI",
+                    "Enter the OpenAI API key first"
+                ),
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
 
-        serviceText.text = "Проверка api.openai.com…"
+        serviceText.text =
+            t(
+                "Проверка api.openai.com…",
+                "Sprawdzanie api.openai.com…",
+                "Checking api.openai.com…"
+            )
+
         Thread {
             try {
                 val result = OpenAiTtsClient.checkAccess(key, this)
                 runOnUiThread {
-                    serviceText.text = result
-                    Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                    val localized = UiText.localizeMessage(this, result)
+                    serviceText.text = localized
+                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
                 }
-            } catch (t: Throwable) {
-                AppDiagnostics.error(this, "OpenAI test failed", t)
+            } catch (error: Throwable) {
+                AppDiagnostics.error(this, "OpenAI test failed", error)
                 runOnUiThread {
-                    val message = t.message ?: "Ошибка OpenAI"
+                    val message =
+                        UiText.localizeMessage(
+                            this,
+                            error.message ?: "OpenAI error"
+                        )
                     serviceText.text = message
                     Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
@@ -800,22 +819,28 @@ class SettingsActivity : Activity() {
     private fun testAzureConnection() {
         persistSettings()
 
-        val key =
-            SettingsStore.azureSpeechKey(this)
-        val region =
-            SettingsStore.azureRegion(this)
+        val key = SettingsStore.azureSpeechKey(this)
+        val region = SettingsStore.azureRegion(this)
 
         if (key.isBlank() || region.isBlank()) {
             Toast.makeText(
                 this,
-                "Введите Azure Speech key и region",
+                t(
+                    "Введите Azure Speech key и region",
+                    "Wprowadź klucz Azure Speech i region",
+                    "Enter the Azure Speech key and region"
+                ),
                 Toast.LENGTH_SHORT
             ).show()
             return
         }
 
         serviceText.text =
-            "Проверка Azure Speech…"
+            t(
+                "Проверка Azure Speech…",
+                "Sprawdzanie Azure Speech…",
+                "Checking Azure Speech…"
+            )
 
         Thread {
             try {
@@ -827,29 +852,20 @@ class SettingsActivity : Activity() {
                     )
 
                 runOnUiThread {
-                    serviceText.text = result
-                    Toast.makeText(
-                        this,
-                        result,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    val localized = UiText.localizeMessage(this, result)
+                    serviceText.text = localized
+                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
                 }
-            } catch (t: Throwable) {
-                AppDiagnostics.error(
-                    this,
-                    "Azure test failed",
-                    t
-                )
-
+            } catch (error: Throwable) {
+                AppDiagnostics.error(this, "Azure test failed", error)
                 runOnUiThread {
                     val message =
-                        t.message ?: "Ошибка Azure"
+                        UiText.localizeMessage(
+                            this,
+                            error.message ?: "Azure error"
+                        )
                     serviceText.text = message
-                    Toast.makeText(
-                        this,
-                        message,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -857,21 +873,27 @@ class SettingsActivity : Activity() {
 
     private fun testGoogleConnection() {
         persistSettings()
-
-        val key =
-            SettingsStore.googleApiKey(this)
+        val key = SettingsStore.googleApiKey(this)
 
         if (key.isBlank()) {
             Toast.makeText(
                 this,
-                "Введите Google Gemini API key",
+                t(
+                    "Введите Google Gemini API key",
+                    "Wprowadź klucz API Google Gemini",
+                    "Enter the Google Gemini API key"
+                ),
                 Toast.LENGTH_SHORT
             ).show()
             return
         }
 
         serviceText.text =
-            "Проверка Google Gemini TTS…"
+            t(
+                "Проверка Google Gemini TTS…",
+                "Sprawdzanie Google Gemini TTS…",
+                "Checking Google Gemini TTS…"
+            )
 
         Thread {
             try {
@@ -882,99 +904,125 @@ class SettingsActivity : Activity() {
                     )
 
                 runOnUiThread {
-                    serviceText.text = result
-                    Toast.makeText(
-                        this,
-                        result,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    val localized = UiText.localizeMessage(this, result)
+                    serviceText.text = localized
+                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
                 }
-            } catch (t: Throwable) {
-                AppDiagnostics.error(
-                    this,
-                    "Google Gemini test failed",
-                    t
-                )
-
+            } catch (error: Throwable) {
+                AppDiagnostics.error(this, "Google Gemini test failed", error)
                 runOnUiThread {
                     val message =
-                        t.message ?: "Ошибка Google Gemini"
+                        UiText.localizeMessage(
+                            this,
+                            error.message ?: "Google Gemini error"
+                        )
                     serviceText.text = message
-                    Toast.makeText(
-                        this,
-                        message,
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
-
     private fun refreshServiceText() {
         if (!::serviceText.isInitialized) return
+
         val engine = SettingsStore.engine(this)
         val voice = SettingsStore.voice(this)
+
+        val openAiState =
+            if (
+                (::keyInput.isInitialized && keyInput.text.isNotBlank()) ||
+                SettingsStore.openAiKey(this).isNotBlank()
+            ) {
+                t("сохранён", "zapisany", "saved")
+            } else {
+                t("нет", "brak", "none")
+            }
+
+        val azureState =
+            if (
+                SettingsStore.azureSpeechKey(this).isNotBlank() &&
+                SettingsStore.azureRegion(this).isNotBlank()
+            ) {
+                "key + ${SettingsStore.azureRegion(this)}"
+            } else {
+                t("не настроен", "nie skonfigurowano", "not configured")
+            }
+
+        val googleState =
+            if (SettingsStore.googleApiKey(this).isNotBlank()) {
+                t("сохранён", "zapisany", "saved")
+            } else {
+                t("нет", "brak", "none")
+            }
+
         serviceText.text =
-            "Текущий движок: ${engineLabel(engine)}\n" +
-                "Голос: ${voice.ifBlank { "не выбран" }}\n" +
-                "OpenAI key: ${
-                    if (
-                        ::keyInput.isInitialized &&
-                        keyInput.text.isNotBlank()
-                    ) {
-                        "введён"
-                    } else if (
-                        SettingsStore.openAiKey(this).isNotBlank()
-                    ) {
-                        "сохранён"
-                    } else {
-                        "нет"
-                    }
-                }\n" +
-                "Azure: ${
-                    if (
-                        SettingsStore.azureSpeechKey(this).isNotBlank() &&
-                        SettingsStore.azureRegion(this).isNotBlank()
-                    ) {
-                        "key + ${SettingsStore.azureRegion(this)}"
-                    } else {
-                        "не настроен"
-                    }
-                }\n" +
-                "Google Gemini key: ${
-                    if (
-                        SettingsStore.googleApiKey(this).isNotBlank()
-                    ) {
-                        "сохранён"
-                    } else {
-                        "нет"
-                    }
-                }"
+            t("Текущий движок", "Bieżący silnik", "Current engine") +
+                ": ${engineLabel(engine)}\n" +
+                t("Голос", "Głos", "Voice") +
+                ": ${voice.ifBlank { t("не выбран", "nie wybrano", "not selected") }}\n" +
+                "OpenAI key: $openAiState\n" +
+                "Azure: $azureState\n" +
+                "Google Gemini key: $googleState"
     }
 
     private fun updateStatus() {
         if (!::statusText.isInitialized) return
         val engine = SettingsStore.engine(this)
-        statusText.text = when {
-            engine == SettingsStore.ENGINE_OPENAI ->
-                "Рабочий Speech API. При ошибке DNS выполняются до 3 безопасных попыток; таймаут не повторяется автоматически, чтобы исключить двойную оплату."
-            engine == SettingsStore.ENGINE_SILERO ->
-                "Голоса v5_5_ru заведены в каталог. Локальный runtime подключим следующим этапом."
-            engine == SettingsStore.ENGINE_EDGE ->
-                "Microsoft Edge Read Aloud подключён: бесплатная сетевая озвучка без API key. Это неофициальный endpoint Edge, поэтому протокол может измениться."
-            engine == SettingsStore.ENGINE_AZURE ->
-                "Azure Speech подключён через официальный REST API. Для бесплатного F0 используйте Dmitry/Svetlana/Dariya Neural; HD Lev не входит в F0."
-            engine == SettingsStore.ENGINE_GOOGLE ->
-                "Google Gemini 2.5 Flash TTS подключён через Developer API. Русский поддерживается; на Developer API сейчас есть бесплатный tier. Голос по умолчанию Gacrux (mature)."
-            engine == SettingsStore.ENGINE_RHVOICE ->
-                "RHVoice работает полностью офлайн и без API key. Для русского мужского чтения рекомендуем Aleksandr-HQ; движок и голосовые пакеты устанавливаются отдельно, поэтому Kapijuja Reader остаётся маленьким."
 
-            engine.startsWith("android:") ->
-                "Android-движки и голоса считываются с устройства. Выбранный голос перечитывается после каждого возврата из настроек."
-            else -> ""
-        }
+        statusText.text =
+            when {
+                engine == SettingsStore.ENGINE_OPENAI ->
+                    t(
+                        "Рабочий Speech API. При ошибке DNS выполняются до 3 безопасных попыток; таймаут не повторяется автоматически, чтобы исключить двойную оплату.",
+                        "Działający Speech API. Przy błędzie DNS wykonywane są do 3 bezpiecznych prób; po przekroczeniu czasu żądanie nie jest automatycznie powtarzane, aby uniknąć podwójnej opłaty.",
+                        "Working Speech API. DNS failures get up to 3 safe retries; timeouts are not retried automatically to avoid double billing."
+                    )
+
+                engine == SettingsStore.ENGINE_SILERO ->
+                    t(
+                        "Silero v5.5 оставлен как экспериментальный движок; runtime не встроен в основной APK из-за большого размера и необходимости отдельной адаптации модели.",
+                        "Silero v5.5 pozostaje silnikiem eksperymentalnym; runtime nie jest dołączony do głównego APK ze względu na duży rozmiar i konieczność osobnej adaptacji modelu.",
+                        "Silero v5.5 remains experimental; its runtime is not bundled into the base APK because of size and the need for separate model adaptation."
+                    )
+
+                engine == SettingsStore.ENGINE_EDGE ->
+                    t(
+                        "Microsoft Edge Read Aloud подключён: бесплатная сетевая озвучка без API key. Это неофициальный endpoint Edge, поэтому протокол может измениться.",
+                        "Microsoft Edge Read Aloud jest podłączony: bezpłatna synteza sieciowa bez klucza API. To nieoficjalny endpoint Edge, więc protokół może się zmienić.",
+                        "Microsoft Edge Read Aloud is connected: free network TTS without an API key. It uses an unofficial Edge endpoint, so the protocol may change."
+                    )
+
+                engine == SettingsStore.ENGINE_AZURE ->
+                    t(
+                        "Azure Speech подключён через официальный REST API. Для бесплатного F0 используйте Dmitry/Svetlana/Dariya Neural; HD Lev не входит в F0.",
+                        "Azure Speech jest podłączony przez oficjalne REST API. W bezpłatnym F0 używaj Dmitry/Svetlana/Dariya Neural; HD Lev nie należy do F0.",
+                        "Azure Speech uses the official REST API. For free F0 use Dmitry/Svetlana/Dariya Neural; HD Lev is not included in F0."
+                    )
+
+                engine == SettingsStore.ENGINE_GOOGLE ->
+                    t(
+                        "Google Gemini 2.5 Flash TTS подключён через Developer API. Русский поддерживается; голос по умолчанию Gacrux (mature).",
+                        "Google Gemini 2.5 Flash TTS jest podłączony przez Developer API. Rosyjski jest obsługiwany; domyślny głos to Gacrux (mature).",
+                        "Google Gemini 2.5 Flash TTS uses the Developer API. Russian is supported; the default voice is Gacrux (mature)."
+                    )
+
+                engine == SettingsStore.ENGINE_RHVOICE ->
+                    t(
+                        "RHVoice работает полностью офлайн и без API key. Для русского мужского чтения рекомендуем Aleksandr-HQ; движок и голосовые пакеты устанавливаются отдельно.",
+                        "RHVoice działa całkowicie offline i bez klucza API. Do rosyjskiego męskiego czytania polecamy Aleksandr-HQ; silnik i pakiety głosowe instalują się osobno.",
+                        "RHVoice works fully offline and needs no API key. For Russian male reading we recommend Aleksandr-HQ; the engine and voice packs are installed separately."
+                    )
+
+                engine.startsWith("android:") ->
+                    t(
+                        "Android-движки и голоса считываются с устройства. Выбранный голос перечитывается после каждого возврата из настроек.",
+                        "Silniki i głosy Android są odczytywane z urządzenia. Wybrany głos jest ponownie wczytywany po każdym powrocie z ustawień.",
+                        "Android engines and voices are read from the device. The selected voice is reloaded whenever you return from settings."
+                    )
+
+                else -> ""
+            }
     }
-
     private fun currentVoiceLabel(): String {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
