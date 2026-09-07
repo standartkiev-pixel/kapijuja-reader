@@ -23,6 +23,7 @@ class SettingsActivity : Activity() {
     private lateinit var keyInput: EditText
     private lateinit var instructionInput: EditText
     private lateinit var costInput: EditText
+    private lateinit var serviceText: TextView
 
     private var probeTts: TextToSpeech? = null
     private var installedEngines: List<TextToSpeech.EngineInfo> = emptyList()
@@ -42,6 +43,7 @@ class SettingsActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), dp(28))
         }
+        KapijujaUiTheme.applySafeArea(root)
 
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -50,7 +52,10 @@ class SettingsActivity : Activity() {
         val back = Button(this).apply {
             text = "‹"
             textSize = 30f
-            setOnClickListener { finish() }
+            setOnClickListener {
+                persistSettings()
+                finish()
+            }
         }
         KapijujaUiTheme.button(this, back)
         top.addView(back, LinearLayout.LayoutParams(dp(58), dp(54)))
@@ -65,7 +70,17 @@ class SettingsActivity : Activity() {
         top.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         root.addView(top)
 
+        val autoSave = TextView(this).apply {
+            text = "Все изменения сохраняются автоматически при выходе."
+            textSize = 13f
+            setPadding(dp(4), dp(4), dp(4), dp(6))
+        }
+        KapijujaUiTheme.secondary(autoSave)
+        root.addView(autoSave)
+
         root.addView(sectionTitle("Движок"))
+        val currentEngine = SettingsStore.engine(this)
+        SettingsStore.ensureDefaultVoice(this, currentEngine, VoiceCatalog.defaultVoice(currentEngine))
         engineButton = Button(this).apply {
             text = engineLabel(SettingsStore.engine(this@SettingsActivity))
             textSize = 17f
@@ -76,7 +91,7 @@ class SettingsActivity : Activity() {
 
         root.addView(sectionTitle("Голос"))
         voiceButton = Button(this).apply {
-            text = SettingsStore.voice(this@SettingsActivity).ifBlank { "Выбрать голос" }
+            text = currentVoiceLabel()
             textSize = 17f
             setOnClickListener { chooseVoice() }
         }
@@ -92,7 +107,7 @@ class SettingsActivity : Activity() {
 
         root.addView(sectionTitle("OpenAI GPT-4o Mini TTS"))
         val note = TextView(this).apply {
-            text = "Для личного теста ключ можно ввести на устройстве. В финальной версии ключ не должен находиться внутри APK — заменим это на серверный relay."
+            text = "Ключ хранится только в данных приложения на этом устройстве. GitHub Secret в APK не встраивается."
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -120,7 +135,7 @@ class SettingsActivity : Activity() {
 
         root.addView(sectionTitle("Защита от расходов"))
         val costNote = TextView(this).apply {
-            text = "Перед дорогим чтением программа показывает примерную длительность и цену. Порог предупреждения, €:"
+            text = "Порог, после которого приложение обязательно покажет ориентировочную стоимость перед генерацией, €:"
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -134,26 +149,63 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.input(this, costInput)
         root.addView(costInput, inputParams())
 
-        val save = Button(this).apply {
-            text = "Сохранить настройки"
-            textSize = 18f
+        root.addView(sectionTitle("Сервис"))
+
+        val testOpenAi = Button(this).apply {
+            text = "Проверить OpenAI"
+            textSize = 16f
+            setOnClickListener { testOpenAiConnection() }
+        }
+        KapijujaUiTheme.button(this, testOpenAi)
+        root.addView(testOpenAi, fullButton())
+
+        val showLog = Button(this).apply {
+            text = "Показать журнал диагностики"
+            textSize = 16f
             setOnClickListener {
-                SettingsStore.setOpenAiKey(this@SettingsActivity, keyInput.text.toString())
-                SettingsStore.setOpenAiInstructions(this@SettingsActivity, instructionInput.text.toString())
-                val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.03
-                SettingsStore.setConfirmEuro(this@SettingsActivity, limit)
-                Toast.makeText(this@SettingsActivity, "Настройки сохранены", Toast.LENGTH_SHORT).show()
-                finish()
+                AlertDialog.Builder(this@SettingsActivity)
+                    .setTitle("Kapijuja Reader — диагностика")
+                    .setMessage(AppDiagnostics.lastLines(this@SettingsActivity, 24))
+                    .setNegativeButton("Очистить") { _, _ ->
+                        AppDiagnostics.clear(this@SettingsActivity)
+                        refreshServiceText()
+                    }
+                    .setPositiveButton("Закрыть", null)
+                    .show()
             }
         }
-        KapijujaUiTheme.button(this, save, primary = true)
-        root.addView(save, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(60)
-        ).apply { topMargin = dp(12) })
+        KapijujaUiTheme.button(this, showLog)
+        root.addView(showLog, fullButton())
+
+        serviceText = TextView(this).apply {
+            textSize = 13f
+            setPadding(dp(4), dp(4), dp(4), dp(20))
+        }
+        KapijujaUiTheme.secondary(serviceText)
+        root.addView(serviceText)
 
         outer.addView(root)
         setContentView(outer)
         updateStatus()
+        refreshServiceText()
+    }
+
+    private fun persistSettings() {
+        if (!::keyInput.isInitialized) return
+        SettingsStore.setOpenAiKey(this, keyInput.text.toString())
+        SettingsStore.setOpenAiInstructions(this, instructionInput.text.toString())
+        val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull()
+            ?: SettingsStore.confirmEuro(this)
+        SettingsStore.setConfirmEuro(this, limit)
+        AppDiagnostics.info(
+            this,
+            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} keyPresent=${SettingsStore.openAiKey(this).isNotBlank()}"
+        )
+    }
+
+    override fun onPause() {
+        persistSettings()
+        super.onPause()
     }
 
     private fun probeInstalledEngines() {
@@ -161,7 +213,10 @@ class SettingsActivity : Activity() {
         probeTts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 installedEngines = probeTts?.engines.orEmpty()
+                AppDiagnostics.info(this, "Android TTS engines found: ${installedEngines.size}")
                 updateStatus()
+            } else {
+                AppDiagnostics.error(this, "Android TTS engine probe failed: status=$status")
             }
         }
     }
@@ -183,10 +238,12 @@ class SettingsActivity : Activity() {
             .setItems(dynamic.map { it.second }.toTypedArray()) { _, index ->
                 val id = dynamic[index].first
                 SettingsStore.setEngine(this, id)
-                SettingsStore.setVoice(this, VoiceCatalog.defaultVoice(id))
+                SettingsStore.ensureDefaultVoice(this, id, VoiceCatalog.defaultVoice(id))
                 engineButton.text = dynamic[index].second
-                voiceButton.text = SettingsStore.voice(this).ifBlank { "Выбрать голос" }
+                voiceButton.text = currentVoiceLabel()
+                AppDiagnostics.info(this, "Engine selected: $id")
                 updateStatus()
+                refreshServiceText()
             }
             .show()
     }
@@ -195,7 +252,7 @@ class SettingsActivity : Activity() {
         val engine = SettingsStore.engine(this)
         if (engine.startsWith("android:")) {
             val pkg = engine.removePrefix("android:").takeIf { it != "default" }
-            loadAndroidVoices(pkg)
+            loadAndroidVoices(pkg, engine)
             return
         }
 
@@ -207,17 +264,20 @@ class SettingsActivity : Activity() {
         AlertDialog.Builder(this)
             .setTitle("Голос")
             .setItems(voices.map { it.label }.toTypedArray()) { _, which ->
-                SettingsStore.setVoice(this, voices[which].id)
+                SettingsStore.setVoice(this, engine, voices[which].id)
                 voiceButton.text = voices[which].label
+                AppDiagnostics.info(this, "Voice selected: engine=$engine voice=${voices[which].id}")
+                refreshServiceText()
             }
             .show()
     }
 
-    private fun loadAndroidVoices(pkg: String?) {
+    private fun loadAndroidVoices(pkg: String?, engine: String) {
         probeTts?.shutdown()
         val listener = TextToSpeech.OnInitListener { status ->
             if (status != TextToSpeech.SUCCESS) {
                 Toast.makeText(this, "Не удалось открыть TTS движок", Toast.LENGTH_SHORT).show()
+                AppDiagnostics.error(this, "Android voice probe failed: engine=$engine status=$status")
                 return@OnInitListener
             }
             val voices = probeTts?.voices.orEmpty()
@@ -234,31 +294,81 @@ class SettingsActivity : Activity() {
                     val locale = it.locale?.toLanguageTag().orEmpty()
                     "${it.name}  $locale"
                 }.toTypedArray()) { _, which ->
-                    SettingsStore.setVoice(this, voices[which].name)
+                    SettingsStore.setVoice(this, engine, voices[which].name)
                     voiceButton.text = voices[which].name
+                    AppDiagnostics.info(
+                        this,
+                        "Android voice selected: engine=$engine voice=${voices[which].name} locale=${voices[which].locale}"
+                    )
+                    refreshServiceText()
                 }
                 .show()
         }
         probeTts = if (pkg == null) TextToSpeech(this, listener) else TextToSpeech(this, listener, pkg)
     }
 
+    private fun testOpenAiConnection() {
+        persistSettings()
+        val key = SettingsStore.openAiKey(this)
+        if (key.isBlank()) {
+            Toast.makeText(this, "Сначала введите OpenAI API key", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        serviceText.text = "Проверка api.openai.com…"
+        Thread {
+            try {
+                val result = OpenAiTtsClient.checkAccess(key, this)
+                runOnUiThread {
+                    serviceText.text = result
+                    Toast.makeText(this, result, Toast.LENGTH_LONG).show()
+                }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(this, "OpenAI test failed", t)
+                runOnUiThread {
+                    val message = t.message ?: "Ошибка OpenAI"
+                    serviceText.text = message
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun refreshServiceText() {
+        if (!::serviceText.isInitialized) return
+        val engine = SettingsStore.engine(this)
+        val voice = SettingsStore.voice(this)
+        serviceText.text =
+            "Текущий движок: ${engineLabel(engine)}\n" +
+            "Голос: ${voice.ifBlank { "не выбран" }}\n" +
+            "OpenAI key: ${if (::keyInput.isInitialized && keyInput.text.isNotBlank()) "введён" else if (SettingsStore.openAiKey(this).isNotBlank()) "сохранён" else "нет"}"
+    }
+
     private fun updateStatus() {
+        if (!::statusText.isInitialized) return
         val engine = SettingsStore.engine(this)
         statusText.text = when {
             engine == SettingsStore.ENGINE_OPENAI ->
-                "Подключён Speech API. Встроенные голоса берутся из текущего каталога OpenAI."
+                "Рабочий Speech API. При ошибке DNS выполняются до 3 безопасных попыток; таймаут не повторяется автоматически, чтобы исключить двойную оплату."
             engine == SettingsStore.ENGINE_SILERO ->
-                "Голоса v5_5_ru уже заведены в каталог. Локальный runtime модели подключается следующим этапом."
+                "Голоса v5_5_ru заведены в каталог. Локальный runtime подключим следующим этапом."
             engine == SettingsStore.ENGINE_EDGE ->
-                "Экспериментальный сетевой движок. Runtime будет подключён отдельным адаптером."
+                "Экспериментальный сетевой движок. Runtime пока не подключён."
             engine == SettingsStore.ENGINE_AZURE ->
-                "Каталог русских Azure-голосов добавлен. Для реального вызова потребуется Azure credential."
+                "Каталог русских Azure-голосов есть; runtime/credential пока не подключён."
             engine == SettingsStore.ENGINE_GOOGLE ->
-                "Каталог русских Google-голосов добавлен. Для реального вызова потребуется Google credential."
+                "Каталог русских Google-голосов есть; runtime/credential пока не подключён."
             engine.startsWith("android:") ->
-                "Android-движки и их голоса считываются непосредственно с устройства. RHVoice появится здесь автоматически после установки."
+                "Android-движки и голоса считываются с устройства. Выбранный голос теперь перечитывается после каждого возврата из настроек."
             else -> ""
         }
+    }
+
+    private fun currentVoiceLabel(): String {
+        val engine = SettingsStore.engine(this)
+        val id = SettingsStore.voice(this, engine)
+        if (id.isBlank()) return "Выбрать голос"
+        return VoiceCatalog.staticVoices(engine).firstOrNull { it.id == id }?.label ?: id
     }
 
     private fun engineLabel(id: String): String = when {
@@ -289,6 +399,7 @@ class SettingsActivity : Activity() {
     ).apply { bottomMargin = dp(10) }
 
     override fun onDestroy() {
+        persistSettings()
         probeTts?.shutdown()
         super.onDestroy()
     }
