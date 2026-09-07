@@ -2335,32 +2335,52 @@ class ReaderActivity : Activity() {
             contentResolver
                 .openOutputStream(uri)
                 ?.use {
-                    it.write(
-                        text.toByteArray(
-                            Charsets.UTF_8
-                        )
-                    )
+                    it.write(text.toByteArray(Charsets.UTF_8))
                 }
-                ?: error("Не удалось открыть файл")
+                ?: error(
+                    t(
+                        "Не удалось открыть файл",
+                        "Nie udało się otworzyć pliku",
+                        "Could not open file"
+                    )
+                )
 
             resultText.text =
-                "Текстовый файл сохранён."
+                t(
+                    "Текстовый файл сохранён.",
+                    "Plik tekstowy zapisany.",
+                    "Text file saved."
+                )
             Toast.makeText(
                 this,
-                "Файл сохранён",
+                t("Файл сохранён", "Plik zapisany", "File saved"),
                 Toast.LENGTH_SHORT
             ).show()
-        } catch (t: Throwable) {
+        } catch (error: Throwable) {
+            val detail =
+                UiText.localizeMessage(
+                    this,
+                    error.message ?: ""
+                )
             resultText.text =
-                "Ошибка сохранения: ${t.message}"
+                t(
+                    "Ошибка сохранения: $detail",
+                    "Błąd zapisu: $detail",
+                    "Save error: $detail"
+                )
             Toast.makeText(
                 this,
-                t.message ?: "Ошибка сохранения",
+                detail.ifBlank {
+                    t(
+                        "Ошибка сохранения",
+                        "Błąd zapisu",
+                        "Save error"
+                    )
+                },
                 Toast.LENGTH_LONG
             ).show()
         }
     }
-
     private fun exportMp3(
         uri: Uri,
         engine: String
