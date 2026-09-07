@@ -25,6 +25,8 @@ class SettingsActivity : Activity() {
     private lateinit var costInput: EditText
     private lateinit var azureKeyInput: EditText
     private lateinit var azureRegionInput: EditText
+    private lateinit var googleKeyInput: EditText
+    private lateinit var googleInstructionInput: EditText
     private lateinit var serviceText: TextView
 
     private var probeTts: TextToSpeech? = null
@@ -79,6 +81,8 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.secondary(autoSave)
         root.addView(autoSave)
+
+        SettingsStore.migrateDefaults(this)
 
         root.addView(sectionTitle("Движок"))
         val currentEngine = SettingsStore.engine(this)
@@ -163,9 +167,12 @@ class SettingsActivity : Activity() {
         root.addView(azureKeyInput, inputParams())
 
         azureRegionInput = EditText(this).apply {
-            hint = "Azure region, например westeurope"
+            hint = "Azure region: switzerlandnorth"
             textSize = 15f
             setSingleLine(true)
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             setText(
                 SettingsStore.azureRegion(
                     this@SettingsActivity
@@ -174,6 +181,55 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.input(this, azureRegionInput)
         root.addView(azureRegionInput, inputParams())
+
+        val azureRegionNote = TextView(this).apply {
+            text =
+                "Region — точный идентификатор из Azure Location/Region: только латинские буквы и цифры без пробелов. По умолчанию: switzerlandnorth."
+            textSize = 13f
+            setPadding(dp(4), 0, dp(4), dp(10))
+        }
+        KapijujaUiTheme.secondary(azureRegionNote)
+        root.addView(azureRegionNote)
+
+        root.addView(sectionTitle("Google Gemini 2.5 Flash TTS"))
+
+        val googleNote = TextView(this).apply {
+            text =
+                "Google Gemini TTS поддерживает русский и имеет бесплатный Developer API tier. API key создаётся в Google AI Studio. Внутри APK ключ не хранится."
+            textSize = 14f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        }
+        KapijujaUiTheme.secondary(googleNote)
+        root.addView(googleNote)
+
+        googleKeyInput = EditText(this).apply {
+            hint = "Google Gemini API key"
+            textSize = 15f
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(
+                SettingsStore.googleApiKey(
+                    this@SettingsActivity
+                )
+            )
+        }
+        KapijujaUiTheme.input(this, googleKeyInput)
+        root.addView(googleKeyInput, inputParams())
+
+        googleInstructionInput = EditText(this).apply {
+            hint = "Инструкция голосу Google"
+            textSize = 15f
+            minLines = 4
+            gravity = Gravity.TOP
+            setText(
+                SettingsStore.googleInstructions(
+                    this@SettingsActivity
+                )
+            )
+        }
+        KapijujaUiTheme.input(this, googleInstructionInput)
+        root.addView(googleInstructionInput, inputParams())
 
         root.addView(sectionTitle("Защита от расходов"))
         val costNote = TextView(this).apply {
@@ -210,6 +266,16 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.button(this, testAzure)
         root.addView(testAzure, fullButton())
+
+        val testGoogle = Button(this).apply {
+            text = "Проверить Google Gemini TTS"
+            textSize = 16f
+            setOnClickListener {
+                testGoogleConnection()
+            }
+        }
+        KapijujaUiTheme.button(this, testGoogle)
+        root.addView(testGoogle, fullButton())
 
         val showLog = Button(this).apply {
             text = "Показать журнал диагностики"
@@ -259,12 +325,22 @@ class SettingsActivity : Activity() {
                 azureRegionInput.text.toString()
             )
         }
+        if (::googleKeyInput.isInitialized) {
+            SettingsStore.setGoogleApiKey(
+                this,
+                googleKeyInput.text.toString()
+            )
+            SettingsStore.setGoogleInstructions(
+                this,
+                googleInstructionInput.text.toString()
+            )
+        }
         val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull()
             ?: SettingsStore.confirmEuro(this)
         SettingsStore.setConfirmEuro(this, limit)
         AppDiagnostics.info(
             this,
-            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} openAiKey=${SettingsStore.openAiKey(this).isNotBlank()} azureKey=${SettingsStore.azureSpeechKey(this).isNotBlank()} azureRegion=${SettingsStore.azureRegion(this)}"
+            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} openAiKey=${SettingsStore.openAiKey(this).isNotBlank()} azureKey=${SettingsStore.azureSpeechKey(this).isNotBlank()} azureRegion=${SettingsStore.azureRegion(this)} googleKey=${SettingsStore.googleApiKey(this).isNotBlank()}"
         )
     }
 
@@ -323,11 +399,10 @@ class SettingsActivity : Activity() {
         dynamic += SettingsStore.ENGINE_AZURE to
             "Microsoft Azure — нужен credential"
         dynamic += SettingsStore.ENGINE_GOOGLE to
-            "Google — нужен credential"
+            "Google Gemini 2.5 Flash TTS"
 
         val notReady = setOf(
-            SettingsStore.ENGINE_SILERO,
-            SettingsStore.ENGINE_GOOGLE
+            SettingsStore.ENGINE_SILERO
         )
 
         AlertDialog.Builder(this)
@@ -349,7 +424,7 @@ class SettingsActivity : Activity() {
                         SettingsStore.ENGINE_AZURE ->
                             "Azure требует Speech key и region."
                         else ->
-                            "Google cloud/AI требует отдельный Google credential. До его подключения движок не активируется."
+                            "Этот движок пока не активен."
                     }
                     AlertDialog.Builder(this)
                         .setTitle("Движок пока не активен")
@@ -379,6 +454,19 @@ class SettingsActivity : Activity() {
                         SettingsStore.RHVOICE_PACKAGE,
                         SettingsStore.ENGINE_RHVOICE
                     )
+                }
+
+                if (
+                    id == SettingsStore.ENGINE_GOOGLE &&
+                    SettingsStore.googleApiKey(this).isBlank()
+                ) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Google Gemini TTS")
+                        .setMessage(
+                            "Движок выбран. Вставьте ниже API key из Google AI Studio; настройки сохраняются автоматически."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
                 }
 
                 if (
@@ -585,6 +673,61 @@ class SettingsActivity : Activity() {
         }.start()
     }
 
+    private fun testGoogleConnection() {
+        persistSettings()
+
+        val key =
+            SettingsStore.googleApiKey(this)
+
+        if (key.isBlank()) {
+            Toast.makeText(
+                this,
+                "Введите Google Gemini API key",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        serviceText.text =
+            "Проверка Google Gemini TTS…"
+
+        Thread {
+            try {
+                val result =
+                    GoogleGeminiTtsClient.checkAccess(
+                        apiKey = key,
+                        context = this
+                    )
+
+                runOnUiThread {
+                    serviceText.text = result
+                    Toast.makeText(
+                        this,
+                        result,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(
+                    this,
+                    "Google Gemini test failed",
+                    t
+                )
+
+                runOnUiThread {
+                    val message =
+                        t.message ?: "Ошибка Google Gemini"
+                    serviceText.text = message
+                    Toast.makeText(
+                        this,
+                        message,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
+    }
+
     private fun refreshServiceText() {
         if (!::serviceText.isInitialized) return
         val engine = SettingsStore.engine(this)
@@ -615,6 +758,15 @@ class SettingsActivity : Activity() {
                     } else {
                         "не настроен"
                     }
+                }\n" +
+                "Google Gemini key: ${
+                    if (
+                        SettingsStore.googleApiKey(this).isNotBlank()
+                    ) {
+                        "сохранён"
+                    } else {
+                        "нет"
+                    }
                 }"
     }
 
@@ -631,7 +783,7 @@ class SettingsActivity : Activity() {
             engine == SettingsStore.ENGINE_AZURE ->
                 "Azure Speech подключён через официальный REST API. Для бесплатного F0 используйте Dmitry/Svetlana/Dariya Neural; HD Lev не входит в F0."
             engine == SettingsStore.ENGINE_GOOGLE ->
-                "Каталог русских Google-голосов есть; runtime/credential пока не подключён."
+                "Google Gemini 2.5 Flash TTS подключён через Developer API. Русский поддерживается; на Developer API сейчас есть бесплатный tier. Голос по умолчанию Gacrux (mature)."
             engine == SettingsStore.ENGINE_RHVOICE ->
                 "RHVoice работает полностью офлайн и без API key. Для русского мужского чтения рекомендуем Aleksandr-HQ; движок и голосовые пакеты устанавливаются отдельно, поэтому Kapijuja Reader остаётся маленьким."
 
@@ -656,7 +808,7 @@ class SettingsActivity : Activity() {
         id == SettingsStore.ENGINE_AZURE ->
             "Microsoft Azure Speech"
         id == SettingsStore.ENGINE_GOOGLE ->
-            "Google Cloud TTS — тест"
+            "Google Gemini 2.5 Flash TTS"
         id == SettingsStore.ENGINE_RHVOICE ->
             "RHVoice — бесплатно, офлайн"
         id.startsWith("android:") ->
