@@ -224,14 +224,41 @@ class SettingsActivity : Activity() {
     private fun chooseEngine() {
         val dynamic = mutableListOf<Pair<String, String>>()
         dynamic += SettingsStore.DEFAULT_ENGINE to "Android TTS — системный"
-        installedEngines.forEach {
-            dynamic += "android:${it.name}" to "Android: ${it.label ?: it.name}"
+
+        val rhVoiceInstalled =
+            installedEngines.any {
+                it.name == SettingsStore.RHVOICE_PACKAGE
+            } ||
+                RhVoiceHelper.isInstalled(this)
+
+        if (rhVoiceInstalled) {
+            dynamic += SettingsStore.ENGINE_RHVOICE to
+                "RHVoice — бесплатно, офлайн"
+        } else {
+            dynamic += "install:rhvoice" to
+                "RHVoice — установить бесплатно"
         }
-        dynamic += SettingsStore.ENGINE_OPENAI to "OpenAI — GPT-4o Mini TTS"
-        dynamic += SettingsStore.ENGINE_EDGE to "Microsoft Edge — бесплатно"
-        dynamic += SettingsStore.ENGINE_SILERO to "Silero v5.5 — скоро"
-        dynamic += SettingsStore.ENGINE_AZURE to "Microsoft Azure — нужен credential"
-        dynamic += SettingsStore.ENGINE_GOOGLE to "Google — нужен credential"
+
+        installedEngines
+            .filter {
+                it.name != SettingsStore.RHVOICE_PACKAGE
+            }
+            .forEach {
+                dynamic +=
+                    "android:${it.name}" to
+                        "Android: ${it.label ?: it.name}"
+            }
+
+        dynamic += SettingsStore.ENGINE_OPENAI to
+            "OpenAI — GPT-4o Mini TTS"
+        dynamic += SettingsStore.ENGINE_EDGE to
+            "Microsoft Edge — бесплатно"
+        dynamic += SettingsStore.ENGINE_SILERO to
+            "Silero v5.5 — скоро"
+        dynamic += SettingsStore.ENGINE_AZURE to
+            "Microsoft Azure — нужен credential"
+        dynamic += SettingsStore.ENGINE_GOOGLE to
+            "Google — нужен credential"
 
         val notReady = setOf(
             SettingsStore.ENGINE_SILERO,
@@ -243,6 +270,14 @@ class SettingsActivity : Activity() {
             .setTitle("Выберите движок")
             .setItems(dynamic.map { it.second }.toTypedArray()) { _, index ->
                 val id = dynamic[index].first
+
+                if (id == "install:rhvoice") {
+                    RhVoiceHelper.showInstallDialog(
+                        this@SettingsActivity
+                    )
+                    return@setItems
+                }
+
                 if (id in notReady) {
                     val message = when (id) {
                         SettingsStore.ENGINE_SILERO ->
@@ -261,12 +296,26 @@ class SettingsActivity : Activity() {
                 }
 
                 SettingsStore.setEngine(this, id)
-                SettingsStore.ensureDefaultVoice(this, id, VoiceCatalog.defaultVoice(id))
+                SettingsStore.ensureDefaultVoice(
+                    this,
+                    id,
+                    VoiceCatalog.defaultVoice(id)
+                )
                 engineButton.text = dynamic[index].second
                 voiceButton.text = currentVoiceLabel()
-                AppDiagnostics.info(this, "Engine selected: $id")
+                AppDiagnostics.info(
+                    this,
+                    "Engine selected: $id"
+                )
                 updateStatus()
                 refreshServiceText()
+
+                if (id == SettingsStore.ENGINE_RHVOICE) {
+                    loadAndroidVoices(
+                        SettingsStore.RHVOICE_PACKAGE,
+                        SettingsStore.ENGINE_RHVOICE
+                    )
+                }
             }
             .show()
     }
@@ -303,12 +352,53 @@ class SettingsActivity : Activity() {
                 AppDiagnostics.error(this, "Android voice probe failed: engine=$engine status=$status")
                 return@OnInitListener
             }
-            val voices = probeTts?.voices.orEmpty()
-                .sortedWith(compareByDescending<android.speech.tts.Voice> {
-                    it.locale?.language == "ru"
-                }.thenBy { it.name })
+            val voices =
+                probeTts?.voices.orEmpty()
+                    .sortedWith(
+                        compareByDescending<android.speech.tts.Voice> {
+                            engine ==
+                                SettingsStore.ENGINE_RHVOICE &&
+                                it.name.contains(
+                                    "aleksandr",
+                                    ignoreCase = true
+                                )
+                        }
+                            .thenByDescending {
+                                it.locale?.language == "ru"
+                            }
+                            .thenBy {
+                                it.name
+                            }
+                    )
+
             if (voices.isEmpty()) {
-                Toast.makeText(this, "Движок не вернул список голосов", Toast.LENGTH_SHORT).show()
+                if (engine == SettingsStore.ENGINE_RHVOICE) {
+                    AlertDialog.Builder(this)
+                        .setTitle("RHVoice установлен")
+                        .setMessage(
+                            "Но голосовые пакеты ещё не найдены. " +
+                                "Откройте RHVoice, загрузите русский язык и мужской голос Aleksandr-HQ, " +
+                                "затем вернитесь в Kapijuja Reader."
+                        )
+                        .setNegativeButton(
+                            "Позже",
+                            null
+                        )
+                        .setPositiveButton(
+                            "Открыть RHVoice"
+                        ) { _, _ ->
+                            RhVoiceHelper.openApp(
+                                this@SettingsActivity
+                            )
+                        }
+                        .show()
+                } else {
+                    Toast.makeText(
+                        this,
+                        "Движок не вернул список голосов",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
                 return@OnInitListener
             }
             AlertDialog.Builder(this)
@@ -381,8 +471,11 @@ class SettingsActivity : Activity() {
                 "Каталог русских Azure-голосов есть; runtime/credential пока не подключён."
             engine == SettingsStore.ENGINE_GOOGLE ->
                 "Каталог русских Google-голосов есть; runtime/credential пока не подключён."
+            engine == SettingsStore.ENGINE_RHVOICE ->
+                "RHVoice работает полностью офлайн и без API key. Для русского мужского чтения рекомендуем Aleksandr-HQ; движок и голосовые пакеты устанавливаются отдельно, поэтому Kapijuja Reader остаётся маленьким."
+
             engine.startsWith("android:") ->
-                "Android-движки и голоса считываются с устройства. Выбранный голос теперь перечитывается после каждого возврата из настроек."
+                "Android-движки и голоса считываются с устройства. Выбранный голос перечитывается после каждого возврата из настроек."
             else -> ""
         }
     }
@@ -400,8 +493,12 @@ class SettingsActivity : Activity() {
         id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
         id == SettingsStore.ENGINE_EDGE -> "Microsoft Edge — тест"
         id == SettingsStore.ENGINE_AZURE -> "Microsoft Azure — тест"
-        id == SettingsStore.ENGINE_GOOGLE -> "Google Cloud TTS — тест"
-        id.startsWith("android:") -> "Android: ${id.removePrefix("android:")}"
+        id == SettingsStore.ENGINE_GOOGLE ->
+            "Google Cloud TTS — тест"
+        id == SettingsStore.ENGINE_RHVOICE ->
+            "RHVoice — бесплатно, офлайн"
+        id.startsWith("android:") ->
+            "Android: ${id.removePrefix("android:")}"
         else -> id
     }
 
