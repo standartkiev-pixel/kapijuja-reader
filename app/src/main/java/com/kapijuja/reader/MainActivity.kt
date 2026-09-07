@@ -42,6 +42,7 @@ class MainActivity : Activity() {
         val frame = FrameLayout(this).apply {
             setBackgroundResource(R.drawable.kapijuja_screen_bg)
         }
+        KapijujaUiTheme.applySafeArea(frame)
 
         val column = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
