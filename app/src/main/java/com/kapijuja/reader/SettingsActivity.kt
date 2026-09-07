@@ -143,8 +143,10 @@ class SettingsActivity : Activity() {
 
         val azureNote = TextView(this).apply {
             text =
-                "Для Azure используется отдельный Speech key и region. " +
-                    "Если создать ресурс Free (F0), стандартные Neural-голоса можно тестировать в бесплатной квоте."
+                t(
+                    "Для Azure используется отдельный Speech key и region. Если создать ресурс Free (F0), стандартные Neural-голоса можно тестировать в бесплатной квоте.",
+                    "Azure uses its own Speech key and region. With a Free (F0) resource, standard Neural voices can be tested within the free quota."
+                )
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -184,7 +186,10 @@ class SettingsActivity : Activity() {
 
         val azureRegionNote = TextView(this).apply {
             text =
-                "Region — точный идентификатор из Azure Location/Region: только латинские буквы и цифры без пробелов. По умолчанию: switzerlandnorth."
+                t(
+                    "Region — точный идентификатор из Azure Location/Region: только латинские буквы и цифры без пробелов. По умолчанию: switzerlandnorth.",
+                    "Region is the exact Azure Location/Region identifier: lowercase letters and digits, no spaces. Default: switzerlandnorth."
+                )
             textSize = 13f
             setPadding(dp(4), 0, dp(4), dp(10))
         }
@@ -195,7 +200,10 @@ class SettingsActivity : Activity() {
 
         val googleNote = TextView(this).apply {
             text =
-                "Google Gemini TTS поддерживает русский и имеет бесплатный Developer API tier. API key создаётся в Google AI Studio. Внутри APK ключ не хранится."
+                t(
+                    "Google Gemini TTS поддерживает русский и имеет бесплатный Developer API tier. API key создаётся в Google AI Studio. Внутри APK ключ не хранится.",
+                    "Google Gemini TTS supports Russian and has a free Developer API tier. Create the API key in Google AI Studio. The key is not embedded in the APK."
+                )
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -374,10 +382,10 @@ class SettingsActivity : Activity() {
 
         if (rhVoiceInstalled) {
             dynamic += SettingsStore.ENGINE_RHVOICE to
-                "RHVoice — бесплатно, офлайн"
+                t("RHVoice — бесплатно, офлайн", "RHVoice — free, offline")
         } else {
             dynamic += "install:rhvoice" to
-                "RHVoice — установить бесплатно"
+                t("RHVoice — установить бесплатно", "RHVoice — install free")
         }
 
         installedEngines
@@ -393,11 +401,11 @@ class SettingsActivity : Activity() {
         dynamic += SettingsStore.ENGINE_OPENAI to
             "OpenAI — GPT-4o Mini TTS"
         dynamic += SettingsStore.ENGINE_EDGE to
-            "Microsoft Edge — бесплатно"
+            t("Microsoft Edge — бесплатно", "Microsoft Edge — free")
         dynamic += SettingsStore.ENGINE_SILERO to
-            "Silero v5.5 — скоро"
+            t("Silero v5.5 — эксперимент", "Silero v5.5 — experiment")
         dynamic += SettingsStore.ENGINE_AZURE to
-            "Microsoft Azure — нужен credential"
+            t("Microsoft Azure — нужен credential", "Microsoft Azure — credential required")
         dynamic += SettingsStore.ENGINE_GOOGLE to
             "Google Gemini 2.5 Flash TTS"
 
@@ -420,14 +428,17 @@ class SettingsActivity : Activity() {
                 if (id in notReady) {
                     val message = when (id) {
                         SettingsStore.ENGINE_SILERO ->
-                            "Silero пока не встроен в APK: модель и локальный runtime подключим отдельным этапом."
+                            t(
+                                "Silero v5.5 пока не активирован в основном APK: Android PyTorch Lite runtime сам занимает около 72 МБ, а v5.5 распространяется как PyTorch package, не как готовый Android-модуль. Нужна отдельная адаптация модели, иначе мы просто раздуем APK без рабочего движка.",
+                                "Silero v5.5 is not enabled in the base APK yet: Android PyTorch Lite alone is about 72 MB, and v5.5 is distributed as a PyTorch package rather than a ready Android module. The model needs separate adaptation; otherwise the APK would become huge without a working engine."
+                            )
                         SettingsStore.ENGINE_AZURE ->
                             "Azure требует Speech key и region."
                         else ->
-                            "Этот движок пока не активен."
+                            t("Этот движок пока не активен.", "This engine is not active yet.")
                     }
                     AlertDialog.Builder(this)
-                        .setTitle("Движок пока не активен")
+                        .setTitle(t("Движок пока не активен", "Engine not active yet"))
                         .setMessage(message)
                         .setPositiveButton("OK", null)
                         .show()
@@ -498,7 +509,7 @@ class SettingsActivity : Activity() {
 
         val voices = VoiceCatalog.staticVoices(engine)
         if (voices.isEmpty()) {
-            Toast.makeText(this, "Для этого движка список голосов пока недоступен", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, t("Для этого движка список голосов пока недоступен", "No voice list is available for this engine yet"), Toast.LENGTH_SHORT).show()
             return
         }
         AlertDialog.Builder(this)
@@ -516,7 +527,7 @@ class SettingsActivity : Activity() {
         probeTts?.shutdown()
         val listener = TextToSpeech.OnInitListener { status ->
             if (status != TextToSpeech.SUCCESS) {
-                Toast.makeText(this, "Не удалось открыть TTS движок", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, t("Не удалось открыть TTS движок", "Could not open TTS engine"), Toast.LENGTH_SHORT).show()
                 AppDiagnostics.error(this, "Android voice probe failed: engine=$engine status=$status")
                 return@OnInitListener
             }
@@ -563,7 +574,7 @@ class SettingsActivity : Activity() {
                 } else {
                     Toast.makeText(
                         this,
-                        "Движок не вернул список голосов",
+                        t("Движок не вернул список голосов", "The engine returned no voices"),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
