@@ -17,9 +17,13 @@ object GoogleGeminiTtsClient {
         "https://generativelanguage.googleapis.com/v1beta/models/$MODEL:generateContent"
     private const val MODEL_ENDPOINT =
         "https://generativelanguage.googleapis.com/v1beta/models/$MODEL"
-    private const val SAMPLE_RATE = 24_000
-    private const val CHANNELS = 1
-    private const val BITS_PER_SAMPLE = 16
+    const val PCM_SAMPLE_RATE = 24_000
+    const val PCM_CHANNELS = 1
+    const val PCM_BITS_PER_SAMPLE = 16
+
+    private const val SAMPLE_RATE = PCM_SAMPLE_RATE
+    private const val CHANNELS = PCM_CHANNELS
+    private const val BITS_PER_SAMPLE = PCM_BITS_PER_SAMPLE
     private const val MAX_CHARS = 1_200
 
     fun synthesizeWav(
