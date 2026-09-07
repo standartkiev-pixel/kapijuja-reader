@@ -601,10 +601,15 @@ class SettingsActivity : Activity() {
                         SettingsStore.ENGINE_SILERO ->
                             t(
                                 "Silero v5.5 пока не активирован в основном APK: Android PyTorch Lite runtime сам занимает около 72 МБ, а v5.5 распространяется как PyTorch package, не как готовый Android-модуль. Нужна отдельная адаптация модели, иначе мы просто раздуем APK без рабочего движка.",
+                                "Silero v5.5 nie jest jeszcze aktywny w głównym APK: sam Android PyTorch Lite zajmuje około 72 MB, a v5.5 jest dystrybuowany jako pakiet PyTorch, a nie gotowy moduł Android. Model wymaga osobnej adaptacji, inaczej tylko powiększymy APK bez działającego silnika.",
                                 "Silero v5.5 is not enabled in the base APK yet: Android PyTorch Lite alone is about 72 MB, and v5.5 is distributed as a PyTorch package rather than a ready Android module. The model needs separate adaptation; otherwise the APK would become huge without a working engine."
                             )
                         SettingsStore.ENGINE_AZURE ->
-                            "Azure требует Speech key и region."
+                            t(
+                                "Azure требует Speech key и region.",
+                                "Azure wymaga klucza Speech i regionu.",
+                                "Azure requires a Speech key and region."
+                            )
                         else ->
                             t("Этот движок пока не активен.", "This engine is not active yet.")
                     }
@@ -645,7 +650,11 @@ class SettingsActivity : Activity() {
                     AlertDialog.Builder(this)
                         .setTitle("Google Gemini TTS")
                         .setMessage(
-                            "Движок выбран. Вставьте ниже API key из Google AI Studio; настройки сохраняются автоматически."
+                            t(
+                                "Движок выбран. Вставьте ниже API key из Google AI Studio; настройки сохраняются автоматически.",
+                                "Silnik wybrany. Wklej poniżej klucz API z Google AI Studio; ustawienia zapisują się automatycznie.",
+                                "Engine selected. Paste the API key from Google AI Studio below; settings are saved automatically."
+                            )
                         )
                         .setPositiveButton("OK", null)
                         .show()
@@ -661,7 +670,11 @@ class SettingsActivity : Activity() {
                     AlertDialog.Builder(this)
                         .setTitle("Azure Speech")
                         .setMessage(
-                            "Движок выбран. Введите ниже Azure Speech key и region; настройки сохраняются автоматически."
+                            t(
+                                "Движок выбран. Введите ниже Azure Speech key и region; настройки сохраняются автоматически.",
+                                "Silnik wybrany. Wprowadź poniżej klucz Azure Speech i region; ustawienia zapisują się automatycznie.",
+                                "Engine selected. Enter the Azure Speech key and region below; settings are saved automatically."
+                            )
                         )
                         .setPositiveButton("OK", null)
                         .show()
@@ -724,18 +737,20 @@ class SettingsActivity : Activity() {
             if (voices.isEmpty()) {
                 if (engine == SettingsStore.ENGINE_RHVOICE) {
                     AlertDialog.Builder(this)
-                        .setTitle("RHVoice установлен")
+                        .setTitle(t("RHVoice установлен", "RHVoice zainstalowany", "RHVoice installed"))
                         .setMessage(
-                            "Но голосовые пакеты ещё не найдены. " +
-                                "Откройте RHVoice, загрузите русский язык и мужской голос Aleksandr-HQ, " +
-                                "затем вернитесь в Kapijuja Reader."
+                            t(
+                                "Но голосовые пакеты ещё не найдены. Откройте RHVoice, загрузите русский язык и мужской голос Aleksandr-HQ, затем вернитесь в Kapijuja Reader.",
+                                "Pakietów głosowych jeszcze nie znaleziono. Otwórz RHVoice, pobierz język rosyjski i męski głos Aleksandr-HQ, a potem wróć do Kapijuja Reader.",
+                                "Voice packages were not found yet. Open RHVoice, download Russian and the male Aleksandr-HQ voice, then return to Kapijuja Reader."
+                            )
                         )
                         .setNegativeButton(
-                            "Позже",
+                            t("Позже", "Później", "Later"),
                             null
                         )
                         .setPositiveButton(
-                            "Открыть RHVoice"
+                            t("Открыть RHVoice", "Otwórz RHVoice", "Open RHVoice")
                         ) { _, _ ->
                             RhVoiceHelper.openApp(
                                 this@SettingsActivity
@@ -1035,13 +1050,13 @@ class SettingsActivity : Activity() {
         id == SettingsStore.ENGINE_ANDROID_SYSTEM -> t("Android TTS — системный", "Android TTS — system default")
         id == SettingsStore.ENGINE_OPENAI -> "OpenAI — GPT-4o Mini TTS"
         id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
-        id == SettingsStore.ENGINE_EDGE -> "Microsoft Edge — тест"
+        id == SettingsStore.ENGINE_EDGE -> t("Microsoft Edge — тест", "Microsoft Edge — test", "Microsoft Edge — test")
         id == SettingsStore.ENGINE_AZURE ->
             "Microsoft Azure Speech"
         id == SettingsStore.ENGINE_GOOGLE ->
             "Google Gemini 2.5 Flash TTS"
         id == SettingsStore.ENGINE_RHVOICE ->
-            "RHVoice — бесплатно, офлайн"
+            t("RHVoice — бесплатно, офлайн", "RHVoice — bezpłatny, offline", "RHVoice — free, offline")
         id.startsWith("android:") ->
             "Android: ${id.removePrefix("android:")}"
         else -> id
