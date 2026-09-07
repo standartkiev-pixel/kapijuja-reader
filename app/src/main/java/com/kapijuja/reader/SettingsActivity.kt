@@ -23,6 +23,8 @@ class SettingsActivity : Activity() {
     private lateinit var keyInput: EditText
     private lateinit var instructionInput: EditText
     private lateinit var costInput: EditText
+    private lateinit var azureKeyInput: EditText
+    private lateinit var azureRegionInput: EditText
     private lateinit var serviceText: TextView
 
     private var probeTts: TextToSpeech? = null
@@ -133,6 +135,46 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.input(this, instructionInput)
         root.addView(instructionInput, inputParams())
 
+        root.addView(sectionTitle("Microsoft Azure Speech"))
+
+        val azureNote = TextView(this).apply {
+            text =
+                "Для Azure используется отдельный Speech key и region. " +
+                    "Если создать ресурс Free (F0), стандартные Neural-голоса можно тестировать в бесплатной квоте."
+            textSize = 14f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        }
+        KapijujaUiTheme.secondary(azureNote)
+        root.addView(azureNote)
+
+        azureKeyInput = EditText(this).apply {
+            hint = "Azure Speech key"
+            textSize = 15f
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(
+                SettingsStore.azureSpeechKey(
+                    this@SettingsActivity
+                )
+            )
+        }
+        KapijujaUiTheme.input(this, azureKeyInput)
+        root.addView(azureKeyInput, inputParams())
+
+        azureRegionInput = EditText(this).apply {
+            hint = "Azure region, например westeurope"
+            textSize = 15f
+            setSingleLine(true)
+            setText(
+                SettingsStore.azureRegion(
+                    this@SettingsActivity
+                )
+            )
+        }
+        KapijujaUiTheme.input(this, azureRegionInput)
+        root.addView(azureRegionInput, inputParams())
+
         root.addView(sectionTitle("Защита от расходов"))
         val costNote = TextView(this).apply {
             text = "Порог, после которого приложение обязательно покажет ориентировочную стоимость перед генерацией, €:"
@@ -158,6 +200,16 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.button(this, testOpenAi)
         root.addView(testOpenAi, fullButton())
+
+        val testAzure = Button(this).apply {
+            text = "Проверить Azure Speech"
+            textSize = 16f
+            setOnClickListener {
+                testAzureConnection()
+            }
+        }
+        KapijujaUiTheme.button(this, testAzure)
+        root.addView(testAzure, fullButton())
 
         val showLog = Button(this).apply {
             text = "Показать журнал диагностики"
@@ -193,13 +245,26 @@ class SettingsActivity : Activity() {
     private fun persistSettings() {
         if (!::keyInput.isInitialized) return
         SettingsStore.setOpenAiKey(this, keyInput.text.toString())
-        SettingsStore.setOpenAiInstructions(this, instructionInput.text.toString())
+        SettingsStore.setOpenAiInstructions(
+            this,
+            instructionInput.text.toString()
+        )
+        if (::azureKeyInput.isInitialized) {
+            SettingsStore.setAzureSpeechKey(
+                this,
+                azureKeyInput.text.toString()
+            )
+            SettingsStore.setAzureRegion(
+                this,
+                azureRegionInput.text.toString()
+            )
+        }
         val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull()
             ?: SettingsStore.confirmEuro(this)
         SettingsStore.setConfirmEuro(this, limit)
         AppDiagnostics.info(
             this,
-            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} keyPresent=${SettingsStore.openAiKey(this).isNotBlank()}"
+            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} openAiKey=${SettingsStore.openAiKey(this).isNotBlank()} azureKey=${SettingsStore.azureSpeechKey(this).isNotBlank()} azureRegion=${SettingsStore.azureRegion(this)}"
         )
     }
 
@@ -262,7 +327,6 @@ class SettingsActivity : Activity() {
 
         val notReady = setOf(
             SettingsStore.ENGINE_SILERO,
-            SettingsStore.ENGINE_AZURE,
             SettingsStore.ENGINE_GOOGLE
         )
 
@@ -283,7 +347,7 @@ class SettingsActivity : Activity() {
                         SettingsStore.ENGINE_SILERO ->
                             "Silero пока не встроен в APK: модель и локальный runtime подключим отдельным этапом."
                         SettingsStore.ENGINE_AZURE ->
-                            "Azure требует Speech key и регион. До добавления этих полей движок не активируется."
+                            "Azure требует Speech key и region."
                         else ->
                             "Google cloud/AI требует отдельный Google credential. До его подключения движок не активируется."
                     }
@@ -315,6 +379,22 @@ class SettingsActivity : Activity() {
                         SettingsStore.RHVOICE_PACKAGE,
                         SettingsStore.ENGINE_RHVOICE
                     )
+                }
+
+                if (
+                    id == SettingsStore.ENGINE_AZURE &&
+                    (
+                        SettingsStore.azureSpeechKey(this).isBlank() ||
+                            SettingsStore.azureRegion(this).isBlank()
+                        )
+                ) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Azure Speech")
+                        .setMessage(
+                            "Движок выбран. Введите ниже Azure Speech key и region; настройки сохраняются автоматически."
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
                 }
             }
             .show()
@@ -447,14 +527,95 @@ class SettingsActivity : Activity() {
         }.start()
     }
 
+    private fun testAzureConnection() {
+        persistSettings()
+
+        val key =
+            SettingsStore.azureSpeechKey(this)
+        val region =
+            SettingsStore.azureRegion(this)
+
+        if (key.isBlank() || region.isBlank()) {
+            Toast.makeText(
+                this,
+                "Введите Azure Speech key и region",
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        serviceText.text =
+            "Проверка Azure Speech…"
+
+        Thread {
+            try {
+                val result =
+                    AzureTtsClient.checkAccess(
+                        speechKey = key,
+                        region = region,
+                        context = this
+                    )
+
+                runOnUiThread {
+                    serviceText.text = result
+                    Toast.makeText(
+                        this,
+                        result,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } catch (t: Throwable) {
+                AppDiagnostics.error(
+                    this,
+                    "Azure test failed",
+                    t
+                )
+
+                runOnUiThread {
+                    val message =
+                        t.message ?: "Ошибка Azure"
+                    serviceText.text = message
+                    Toast.makeText(
+                        this,
+                        message,
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }.start()
+    }
+
     private fun refreshServiceText() {
         if (!::serviceText.isInitialized) return
         val engine = SettingsStore.engine(this)
         val voice = SettingsStore.voice(this)
         serviceText.text =
             "Текущий движок: ${engineLabel(engine)}\n" +
-            "Голос: ${voice.ifBlank { "не выбран" }}\n" +
-            "OpenAI key: ${if (::keyInput.isInitialized && keyInput.text.isNotBlank()) "введён" else if (SettingsStore.openAiKey(this).isNotBlank()) "сохранён" else "нет"}"
+                "Голос: ${voice.ifBlank { "не выбран" }}\n" +
+                "OpenAI key: ${
+                    if (
+                        ::keyInput.isInitialized &&
+                        keyInput.text.isNotBlank()
+                    ) {
+                        "введён"
+                    } else if (
+                        SettingsStore.openAiKey(this).isNotBlank()
+                    ) {
+                        "сохранён"
+                    } else {
+                        "нет"
+                    }
+                }\n" +
+                "Azure: ${
+                    if (
+                        SettingsStore.azureSpeechKey(this).isNotBlank() &&
+                        SettingsStore.azureRegion(this).isNotBlank()
+                    ) {
+                        "key + ${SettingsStore.azureRegion(this)}"
+                    } else {
+                        "не настроен"
+                    }
+                }"
     }
 
     private fun updateStatus() {
@@ -468,7 +629,7 @@ class SettingsActivity : Activity() {
             engine == SettingsStore.ENGINE_EDGE ->
                 "Microsoft Edge Read Aloud подключён: бесплатная сетевая озвучка без API key. Это неофициальный endpoint Edge, поэтому протокол может измениться."
             engine == SettingsStore.ENGINE_AZURE ->
-                "Каталог русских Azure-голосов есть; runtime/credential пока не подключён."
+                "Azure Speech подключён через официальный REST API. Для бесплатного F0 используйте Dmitry/Svetlana/Dariya Neural; HD Lev не входит в F0."
             engine == SettingsStore.ENGINE_GOOGLE ->
                 "Каталог русских Google-голосов есть; runtime/credential пока не подключён."
             engine == SettingsStore.ENGINE_RHVOICE ->
@@ -492,7 +653,8 @@ class SettingsActivity : Activity() {
         id == SettingsStore.ENGINE_OPENAI -> "OpenAI — GPT-4o Mini TTS"
         id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
         id == SettingsStore.ENGINE_EDGE -> "Microsoft Edge — тест"
-        id == SettingsStore.ENGINE_AZURE -> "Microsoft Azure — тест"
+        id == SettingsStore.ENGINE_AZURE ->
+            "Microsoft Azure Speech"
         id == SettingsStore.ENGINE_GOOGLE ->
             "Google Cloud TTS — тест"
         id == SettingsStore.ENGINE_RHVOICE ->
