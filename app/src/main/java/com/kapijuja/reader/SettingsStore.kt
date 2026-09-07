@@ -11,6 +11,9 @@ object SettingsStore {
     private const val KEY_CONFIRM_EURO = "confirm_euro"
     private const val KEY_AZURE_SPEECH_KEY = "azure_speech_key"
     private const val KEY_AZURE_REGION = "azure_region"
+    private const val KEY_AZURE_DEFAULT_MIGRATED = "azure_default_migrated"
+    private const val KEY_GOOGLE_API_KEY = "google_api_key"
+    private const val KEY_GOOGLE_INSTRUCTIONS = "google_instructions"
 
     const val DEFAULT_ENGINE = "android:default"
     const val ENGINE_OPENAI = "cloud:openai"
@@ -18,6 +21,8 @@ object SettingsStore {
     const val ENGINE_EDGE = "cloud:edge"
     const val ENGINE_AZURE = "cloud:azure"
     const val ENGINE_GOOGLE = "cloud:google"
+
+    const val DEFAULT_AZURE_REGION = "switzerlandnorth"
 
     const val RHVOICE_PACKAGE = "com.github.olga_yakovleva.rhvoice.android"
     const val ENGINE_RHVOICE = "android:com.github.olga_yakovleva.rhvoice.android"
@@ -116,21 +121,108 @@ object SettingsStore {
             .apply()
     }
 
-    fun azureRegion(context: Context): String =
-        prefs(context)
-            .getString(KEY_AZURE_REGION, "")
-            ?: ""
+    fun azureRegion(context: Context): String {
+        val p = prefs(context)
+        return if (p.contains(KEY_AZURE_REGION)) {
+            p.getString(KEY_AZURE_REGION, "") ?: ""
+        } else {
+            DEFAULT_AZURE_REGION
+        }
+    }
 
     fun setAzureRegion(
+        context: Context,
+        value: String
+    ) {
+        val normalized =
+            value.trim()
+                .lowercase()
+                .filter { it in 'a'..'z' || it in '0'..'9' }
+
+        prefs(context)
+            .edit()
+            .putString(
+                KEY_AZURE_REGION,
+                normalized
+            )
+            .apply()
+    }
+
+    fun isValidAzureRegion(value: String): Boolean {
+        val v = value.trim()
+        return v.isNotBlank() &&
+            v.length in 4..32 &&
+            v.all { it in 'a'..'z' || it in '0'..'9' }
+    }
+
+    fun migrateDefaults(context: Context) {
+        val p = prefs(context)
+
+        if (!p.getBoolean(KEY_AZURE_DEFAULT_MIGRATED, false)) {
+            val current =
+                voice(
+                    context,
+                    ENGINE_AZURE
+                )
+
+            if (
+                current.isBlank() ||
+                current.startsWith(
+                    "ru-RU-Lev:",
+                    ignoreCase = true
+                )
+            ) {
+                setVoice(
+                    context,
+                    ENGINE_AZURE,
+                    "ru-RU-DmitryNeural"
+                )
+            }
+
+            p.edit()
+                .putBoolean(
+                    KEY_AZURE_DEFAULT_MIGRATED,
+                    true
+                )
+                .apply()
+        }
+    }
+
+    fun googleApiKey(context: Context): String =
+        prefs(context)
+            .getString(KEY_GOOGLE_API_KEY, "")
+            ?: ""
+
+    fun setGoogleApiKey(
         context: Context,
         value: String
     ) {
         prefs(context)
             .edit()
             .putString(
-                KEY_AZURE_REGION,
+                KEY_GOOGLE_API_KEY,
                 value.trim()
-                    .lowercase()
+            )
+            .apply()
+    }
+
+    fun googleInstructions(context: Context): String =
+        prefs(context)
+            .getString(
+                KEY_GOOGLE_INSTRUCTIONS,
+                "Read the Russian text naturally and continuously. Use a mature, calm, low male narration style. Keep sentence pauses natural and short. Do not add dramatic pauses at paragraph breaks."
+            )
+            ?: ""
+
+    fun setGoogleInstructions(
+        context: Context,
+        value: String
+    ) {
+        prefs(context)
+            .edit()
+            .putString(
+                KEY_GOOGLE_INSTRUCTIONS,
+                value.trim()
             )
             .apply()
     }
