@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.view.View
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
@@ -30,6 +31,37 @@ object KapijujaUiTheme {
             activity.window.decorView.systemUiVisibility =
                 activity.window.decorView.systemUiVisibility and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
         }
+    }
+
+    fun applySafeArea(view: View) {
+        val initialLeft = view.paddingLeft
+        val initialTop = view.paddingTop
+        val initialRight = view.paddingRight
+        val initialBottom = view.paddingBottom
+
+        view.setOnApplyWindowInsetsListener { v, insets ->
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(
+                    WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
+                )
+                v.setPadding(
+                    initialLeft + bars.left,
+                    initialTop + bars.top,
+                    initialRight + bars.right,
+                    initialBottom + bars.bottom
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                v.setPadding(
+                    initialLeft + insets.systemWindowInsetLeft,
+                    initialTop + insets.systemWindowInsetTop,
+                    initialRight + insets.systemWindowInsetRight,
+                    initialBottom + insets.systemWindowInsetBottom
+                )
+            }
+            insets
+        }
+        view.post { view.requestApplyInsets() }
     }
 
     fun title(view: TextView) {
