@@ -2161,65 +2161,61 @@ class ReaderActivity : Activity() {
         when (engine) {
             SettingsStore.ENGINE_OPENAI -> {
                 if (SettingsStore.openAiKey(this).isBlank()) {
-                    startActivity(
-                        Intent(
-                            this,
-                            SettingsActivity::class.java
-                        )
-                    )
+                    startActivity(Intent(this, SettingsActivity::class.java))
                     return
                 }
 
-                val cost =
-                    OpenAiTtsClient.estimatedCostEuro(text)
-                val mins =
-                    OpenAiTtsClient.estimatedMinutes(text)
+                val cost = OpenAiTtsClient.estimatedCostEuro(text)
+                val mins = OpenAiTtsClient.estimatedMinutes(text)
 
                 AlertDialog.Builder(this)
-                    .setTitle("Создать MP3 через OpenAI?")
-                    .setMessage(
-                        "Отдельная генерация всего текста: ≈ ${String.format(Locale.US, "%.1f", mins)} мин, " +
-                            "ориентировочно €${String.format(Locale.US, "%.2f", cost)}."
+                    .setTitle(
+                        t(
+                            "Создать MP3 через OpenAI?",
+                            "Utworzyć MP3 przez OpenAI?",
+                            "Create MP3 with OpenAI?"
+                        )
                     )
-                    .setNegativeButton("Нет", null)
-                    .setPositiveButton("Создать") { _, _ ->
-                        pendingExportEngine =
-                            SettingsStore.ENGINE_OPENAI
+                    .setMessage(
+                        t(
+                            "Отдельная генерация всего текста: ≈ ${String.format(Locale.US, "%.1f", mins)} мин, ориентировочно €${String.format(Locale.US, "%.2f", cost)}.",
+                            "Osobne generowanie całego tekstu: ≈ ${String.format(Locale.US, "%.1f", mins)} min, szacunkowo €${String.format(Locale.US, "%.2f", cost)}.",
+                            "Separate generation of the full text: ≈ ${String.format(Locale.US, "%.1f", mins)} min, estimated €${String.format(Locale.US, "%.2f", cost)}."
+                        )
+                    )
+                    .setNegativeButton(t("Нет", "Nie", "No"), null)
+                    .setPositiveButton(t("Создать", "Utwórz", "Create")) { _, _ ->
+                        pendingExportEngine = SettingsStore.ENGINE_OPENAI
                         chooseAudioDestination()
                     }
                     .show()
             }
 
             SettingsStore.ENGINE_EDGE -> {
-                pendingExportEngine =
-                    SettingsStore.ENGINE_EDGE
+                pendingExportEngine = SettingsStore.ENGINE_EDGE
                 chooseAudioDestination()
             }
 
             SettingsStore.ENGINE_GOOGLE -> {
-                if (
-                    SettingsStore.googleApiKey(this).isBlank()
-                ) {
+                if (SettingsStore.googleApiKey(this).isBlank()) {
                     AlertDialog.Builder(this)
                         .setTitle("Google Gemini TTS")
                         .setMessage(
-                            "Введите Google Gemini API key в Настройках."
-                        )
-                        .setNegativeButton("Отмена", null)
-                        .setPositiveButton("Настройки") { _, _ ->
-                            startActivity(
-                                Intent(
-                                    this,
-                                    SettingsActivity::class.java
-                                )
+                            t(
+                                "Введите Google Gemini API key в Настройках.",
+                                "Wprowadź klucz API Google Gemini w Ustawieniach.",
+                                "Enter the Google Gemini API key in Settings."
                             )
+                        )
+                        .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+                        .setPositiveButton(t("Настройки", "Ustawienia", "Settings")) { _, _ ->
+                            startActivity(Intent(this, SettingsActivity::class.java))
                         }
                         .show()
                     return
                 }
 
-                pendingExportEngine =
-                    SettingsStore.ENGINE_GOOGLE
+                pendingExportEngine = SettingsStore.ENGINE_GOOGLE
                 chooseAudioDestination()
             }
 
@@ -2231,23 +2227,21 @@ class ReaderActivity : Activity() {
                     AlertDialog.Builder(this)
                         .setTitle("Azure Speech")
                         .setMessage(
-                            "Введите Azure Speech key и region в Настройках."
-                        )
-                        .setNegativeButton("Отмена", null)
-                        .setPositiveButton("Настройки") { _, _ ->
-                            startActivity(
-                                Intent(
-                                    this,
-                                    SettingsActivity::class.java
-                                )
+                            t(
+                                "Введите Azure Speech key и region в Настройках.",
+                                "Wprowadź klucz Azure Speech i region w Ustawieniach.",
+                                "Enter the Azure Speech key and region in Settings."
                             )
+                        )
+                        .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+                        .setPositiveButton(t("Настройки", "Ustawienia", "Settings")) { _, _ ->
+                            startActivity(Intent(this, SettingsActivity::class.java))
                         }
                         .show()
                     return
                 }
 
-                pendingExportEngine =
-                    SettingsStore.ENGINE_AZURE
+                pendingExportEngine = SettingsStore.ENGINE_AZURE
                 chooseAudioDestination()
             }
 
@@ -2257,10 +2251,11 @@ class ReaderActivity : Activity() {
                     chooseAudioDestination()
                 } else {
                     AlertDialog.Builder(this)
-                        .setTitle(t("Аудиоэкспорт", "Audio export"))
+                        .setTitle(t("Аудиоэкспорт", "Eksport audio", "Audio export"))
                         .setMessage(
                             t(
                                 "Для этого движка аудиоэкспорт пока недоступен.",
+                                "Eksport audio dla tego silnika nie jest jeszcze dostępny.",
                                 "Audio export is not available for this engine yet."
                             )
                         )
@@ -2270,7 +2265,6 @@ class ReaderActivity : Activity() {
             }
         }
     }
-
     private fun chooseAudioDestination() {
         val engine =
             pendingExportEngine
