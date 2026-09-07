@@ -34,7 +34,10 @@ object SettingsStore {
         // One-time migration from 0.1.1 where a single global voice was used.
         val legacy = p.getString(KEY_LEGACY_VOICE, "") ?: ""
         if (legacy.isNotBlank()) {
-            p.edit().putString(voiceKey(engine), legacy).apply()
+            p.edit()
+                .putString(voiceKey(engine), legacy)
+                .remove(KEY_LEGACY_VOICE)
+                .apply()
             return legacy
         }
         return ""
