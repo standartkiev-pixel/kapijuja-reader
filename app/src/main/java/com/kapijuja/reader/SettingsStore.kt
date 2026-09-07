@@ -17,6 +17,9 @@ object SettingsStore {
     const val ENGINE_AZURE = "cloud:azure"
     const val ENGINE_GOOGLE = "cloud:google"
 
+    const val RHVOICE_PACKAGE = "com.github.olga_yakovleva.rhvoice.android"
+    const val ENGINE_RHVOICE = "android:com.github.olga_yakovleva.rhvoice.android"
+
     fun engine(context: Context): String =
         prefs(context).getString(KEY_ENGINE, DEFAULT_ENGINE) ?: DEFAULT_ENGINE
 
