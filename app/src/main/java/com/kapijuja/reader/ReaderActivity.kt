@@ -2502,7 +2502,11 @@ class ReaderActivity : Activity() {
                                 exportProgress.progress =
                                     percent
                                 progressText.text =
-                                    t("Создание MP3: ${index + 1}/${chunks.size} • $percent%", "Creating MP3: ${index + 1}/${chunks.size} • $percent%")
+                                    t(
+                                        "Создание MP3: ${index + 1}/${chunks.size} • $percent%",
+                                        "Tworzenie MP3: ${index + 1}/${chunks.size} • $percent%",
+                                        "Creating MP3: ${index + 1}/${chunks.size} • $percent%"
+                                    )
                                 listenButton.text =
                                     "MP3 $percent%"
                             }
@@ -2513,7 +2517,7 @@ class ReaderActivity : Activity() {
                 mainHandler.post {
                     exportProgress.progress = 100
                     progressText.text =
-                        t("MP3 полностью записан • 100%", "MP3 complete • 100%")
+                        t("MP3 полностью записан • 100%", "MP3 zapisany • 100%", "MP3 complete • 100%")
                     listenButton.text = "Слушать"
                     restoreAudioExportButton()
 
@@ -2521,30 +2525,35 @@ class ReaderActivity : Activity() {
                         if (engine ==
                             SettingsStore.ENGINE_OPENAI
                         ) {
-                            "Ориентировочная стоимость этой генерации ≈ €${
-                                String.format(
-                                    Locale.US,
-                                    "%.2f",
-                                    OpenAiTtsClient
-                                        .estimatedCostEuro(text)
-                                )
-                            }"
+                            t(
+                                "Ориентировочная стоимость этой генерации ≈ €${String.format(Locale.US, "%.2f", OpenAiTtsClient.estimatedCostEuro(text))}",
+                                "Szacowany koszt tej generacji ≈ €${String.format(Locale.US, "%.2f", OpenAiTtsClient.estimatedCostEuro(text))}",
+                                "Estimated cost of this generation ≈ €${String.format(Locale.US, "%.2f", OpenAiTtsClient.estimatedCostEuro(text))}"
+                            )
                         } else if (
                             engine ==
                             SettingsStore.ENGINE_EDGE
                         ) {
-                            "Microsoft Edge: бесплатно"
+                            t("Microsoft Edge: бесплатно", "Microsoft Edge: bezpłatnie", "Microsoft Edge: free")
                         } else {
-                            "Azure Speech: F0 бесплатно в пределах квоты"
+                            t("Azure Speech: F0 бесплатно в пределах квоты", "Azure Speech: F0 bezpłatnie w ramach limitu", "Azure Speech: F0 free within quota")
                         }
 
                     resultText.text =
-                        "MP3 сохранён. $costLine"
+                        t(
+                            "MP3 сохранён. $costLine",
+                            "MP3 zapisany. $costLine",
+                            "MP3 saved. $costLine"
+                        )
 
                     AlertDialog.Builder(this)
-                        .setTitle("MP3 готов")
+                        .setTitle(t("MP3 готов", "MP3 gotowy", "MP3 ready"))
                         .setMessage(
-                            "Файл полностью создан и записан.\n\n$costLine"
+                            t(
+                                "Файл полностью создан и записан.\n\n$costLine",
+                                "Plik został utworzony i zapisany.\n\n$costLine",
+                                "The file has been created and saved.\n\n$costLine"
+                            )
                         )
                         .setPositiveButton("OK", null)
                         .show()
@@ -2577,12 +2586,18 @@ class ReaderActivity : Activity() {
                         listenButton.text = "Слушать"
                         exportProgress.visibility = View.VISIBLE
                         progressText.visibility = View.VISIBLE
-                        progressText.text = t("Ошибка создания MP3", "MP3 export error")
-                        resultText.text = t.message ?: t("Ошибка создания MP3", "MP3 export error")
+                        progressText.text =
+                            t("Ошибка создания MP3", "Błąd tworzenia MP3", "MP3 export error")
+                        val message =
+                            UiText.localizeMessage(
+                                this,
+                                t.message ?: t("Ошибка создания MP3", "Błąd tworzenia MP3", "MP3 export error")
+                            )
+                        resultText.text = message
 
                         AlertDialog.Builder(this)
-                            .setTitle(t("MP3 не создан", "MP3 not created"))
-                            .setMessage(t.message ?: t("Неизвестная ошибка", "Unknown error"))
+                            .setTitle(t("MP3 не создан", "Nie utworzono MP3", "MP3 not created"))
+                            .setMessage(message)
                             .setPositiveButton("OK", null)
                             .show()
                     }
