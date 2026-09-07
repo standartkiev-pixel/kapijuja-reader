@@ -28,11 +28,26 @@ object VoiceCatalog {
     )
 
     val azure = listOf(
-        VoiceChoice("ru-RU-Lev:MAI-Voice-2-Flash", "Lev HD Flash — мужской"),
-        VoiceChoice("ru-RU-Lev:MAI-Voice-2", "Lev HD — мужской"),
-        VoiceChoice("ru-RU-DmitryNeural", "Dmitry Neural — мужской"),
-        VoiceChoice("ru-RU-SvetlanaNeural", "Svetlana Neural"),
-        VoiceChoice("ru-RU-DariyaNeural", "Dariya Neural")
+        VoiceChoice(
+            "ru-RU-DmitryNeural",
+            "Dmitry Neural — мужской, подходит F0"
+        ),
+        VoiceChoice(
+            "ru-RU-SvetlanaNeural",
+            "Svetlana Neural — подходит F0"
+        ),
+        VoiceChoice(
+            "ru-RU-DariyaNeural",
+            "Dariya Neural — подходит F0"
+        ),
+        VoiceChoice(
+            "ru-RU-Lev:MAI-Voice-2-Flash",
+            "Lev HD Flash — мужской, не входит в F0"
+        ),
+        VoiceChoice(
+            "ru-RU-Lev:MAI-Voice-2",
+            "Lev HD — мужской, не входит в F0"
+        )
     )
 
     val google = listOf(
@@ -65,7 +80,7 @@ object VoiceCatalog {
         SettingsStore.ENGINE_OPENAI -> "cedar"
         SettingsStore.ENGINE_SILERO -> "eugene"
         SettingsStore.ENGINE_EDGE -> "ru-RU-DmitryNeural"
-        SettingsStore.ENGINE_AZURE -> "ru-RU-Lev:MAI-Voice-2-Flash"
+        SettingsStore.ENGINE_AZURE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_GOOGLE -> "ru-RU-Chirp3-HD-Charon"
         else -> ""
     }
