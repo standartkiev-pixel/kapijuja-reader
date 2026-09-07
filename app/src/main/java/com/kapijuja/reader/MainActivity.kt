@@ -339,13 +339,18 @@ class MainActivity : Activity() {
             } catch (t: Throwable) {
                 runOnUiThread {
                     loading.visibility = View.GONE
+                    val message =
+                        UiText.localizeMessage(
+                            this,
+                            t.message ?: t(
+                                "Не удалось прочитать документ",
+                                "Nie udało się odczytać dokumentu",
+                                "Could not read document"
+                            )
+                        )
                     Toast.makeText(
                         this,
-                        t.message ?: t(
-                            "Не удалось прочитать документ",
-                            "Nie udało się odczytać dokumentu",
-                            "Could not read document"
-                        ),
+                        message,
                         Toast.LENGTH_LONG
                     ).show()
                 }
