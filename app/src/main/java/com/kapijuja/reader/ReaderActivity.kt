@@ -468,9 +468,7 @@ class ReaderActivity : Activity() {
                     "Silero пока не встроен в APK. Этот пункт больше не перебрасывает в настройки; локальный runtime подключим отдельно."
                 )
             SettingsStore.ENGINE_AZURE ->
-                showUnavailable(
-                    "Microsoft Azure требует Speech key и регион. Сейчас этот профиль не активируется без credential."
-                )
+                startAzureFrom(currentSegment)
             SettingsStore.ENGINE_GOOGLE ->
                 showUnavailable(
                     "Google TTS/AI требует отдельный Google credential. Сейчас этот профиль не активируется без него."
@@ -699,7 +697,41 @@ class ReaderActivity : Activity() {
     }
 
     private fun startEdgeFrom(index: Int) {
-        startCloudFrom(index, SettingsStore.ENGINE_EDGE)
+        startCloudFrom(
+            index,
+            SettingsStore.ENGINE_EDGE
+        )
+    }
+
+    private fun startAzureFrom(index: Int) {
+        val key =
+            SettingsStore.azureSpeechKey(this)
+        val region =
+            SettingsStore.azureRegion(this)
+
+        if (key.isBlank() || region.isBlank()) {
+            AlertDialog.Builder(this)
+                .setTitle("Azure Speech")
+                .setMessage(
+                    "Введите Azure Speech key и region в Настройках."
+                )
+                .setNegativeButton("Отмена", null)
+                .setPositiveButton("Настройки") { _, _ ->
+                    startActivity(
+                        Intent(
+                            this,
+                            SettingsActivity::class.java
+                        )
+                    )
+                }
+                .show()
+            return
+        }
+
+        startCloudFrom(
+            index,
+            SettingsStore.ENGINE_AZURE
+        )
     }
 
     private fun startCloudFrom(index: Int, engine: String) {
@@ -715,10 +747,13 @@ class ReaderActivity : Activity() {
         playPause.text = "Пауза"
         listenButton.text = "Готовится…"
         resultText.text =
-            if (engine == SettingsStore.ENGINE_EDGE) {
-                "Microsoft Edge: получение аудио…"
-            } else {
-                "OpenAI: получение аудио…"
+            when (engine) {
+                SettingsStore.ENGINE_EDGE ->
+                    "Microsoft Edge: получение аудио…"
+                SettingsStore.ENGINE_AZURE ->
+                    "Azure Speech: получение аудио…"
+                else ->
+                    "OpenAI: получение аудио…"
             }
 
         playCloudSegment(
@@ -739,13 +774,16 @@ class ReaderActivity : Activity() {
         highlight(index)
 
         val segment = segments[index]
-        val voice = SettingsStore.voice(this).ifBlank {
-            if (engine == SettingsStore.ENGINE_EDGE) {
-                "ru-RU-DmitryNeural"
-            } else {
-                "cedar"
+        val voice =
+            SettingsStore.voice(this).ifBlank {
+                when (engine) {
+                    SettingsStore.ENGINE_EDGE,
+                    SettingsStore.ENGINE_AZURE ->
+                        "ru-RU-DmitryNeural"
+                    else ->
+                        "cedar"
+                }
             }
-        }
 
         Thread {
             try {
@@ -770,6 +808,22 @@ class ReaderActivity : Activity() {
                                 context = this@ReaderActivity
                             )
 
+                        SettingsStore.ENGINE_AZURE ->
+                            AzureTtsClient.synthesize(
+                                speechKey =
+                                    SettingsStore.azureSpeechKey(
+                                        this
+                                    ),
+                                region =
+                                    SettingsStore.azureRegion(
+                                        this
+                                    ),
+                                text = segment.spoken,
+                                voice = voice,
+                                speed = speechRate,
+                                context = this@ReaderActivity
+                            )
+
                         else ->
                             error("Unsupported cloud engine: $engine")
                     }
@@ -777,8 +831,14 @@ class ReaderActivity : Activity() {
                 if (token != generationToken) return@Thread
 
                 val prefix =
-                    if (engine == SettingsStore.ENGINE_EDGE) "edge"
-                    else "openai"
+                    when (engine) {
+                        SettingsStore.ENGINE_EDGE ->
+                            "edge"
+                        SettingsStore.ENGINE_AZURE ->
+                            "azure"
+                        else ->
+                            "openai"
+                    }
                 val file =
                     File(
                         cacheDir,
@@ -830,8 +890,13 @@ class ReaderActivity : Activity() {
                                                         estimatedOpenAiRunCost()
                                                     )
                                                 }"
-                                            } else {
+                                            } else if (
+                                                engine ==
+                                                SettingsStore.ENGINE_EDGE
+                                            ) {
                                                 "Чтение завершено • Microsoft Edge: бесплатно"
+                                            } else {
+                                                "Чтение завершено • Azure Speech"
                                             }
                                     } else {
                                         playCloudSegment(
@@ -878,12 +943,15 @@ class ReaderActivity : Activity() {
                         )
                         listenButton.text = "Читается"
                         resultText.text =
-                            if (engine ==
-                                SettingsStore.ENGINE_OPENAI
-                            ) {
-                                "OpenAI • предложение ${index + 1}/${segments.size}"
-                            } else {
-                                "Microsoft Edge • предложение ${index + 1}/${segments.size}"
+                            when (engine) {
+                                SettingsStore.ENGINE_OPENAI ->
+                                    "OpenAI • предложение ${index + 1}/${segments.size}"
+                                SettingsStore.ENGINE_EDGE ->
+                                    "Microsoft Edge • предложение ${index + 1}/${segments.size}"
+                                SettingsStore.ENGINE_AZURE ->
+                                    "Azure Speech • предложение ${index + 1}/${segments.size}"
+                                else ->
+                                    "TTS • предложение ${index + 1}/${segments.size}"
                             }
                     } catch (t: Throwable) {
                         if (activeTempFile == file) {
@@ -1103,6 +1171,8 @@ class ReaderActivity : Activity() {
                     startOpenAiFrom(currentSegment)
                 engine == SettingsStore.ENGINE_EDGE ->
                     startEdgeFrom(currentSegment)
+                engine == SettingsStore.ENGINE_AZURE ->
+                    startAzureFrom(currentSegment)
                 engine.startsWith("android:") ->
                     startAndroidTts()
             }
@@ -1202,12 +1272,40 @@ class ReaderActivity : Activity() {
                 chooseAudioDestination()
             }
 
+            SettingsStore.ENGINE_AZURE -> {
+                if (
+                    SettingsStore.azureSpeechKey(this).isBlank() ||
+                    SettingsStore.azureRegion(this).isBlank()
+                ) {
+                    AlertDialog.Builder(this)
+                        .setTitle("Azure Speech")
+                        .setMessage(
+                            "Введите Azure Speech key и region в Настройках."
+                        )
+                        .setNegativeButton("Отмена", null)
+                        .setPositiveButton("Настройки") { _, _ ->
+                            startActivity(
+                                Intent(
+                                    this,
+                                    SettingsActivity::class.java
+                                )
+                            )
+                        }
+                        .show()
+                    return
+                }
+
+                pendingExportEngine =
+                    SettingsStore.ENGINE_AZURE
+                chooseAudioDestination()
+            }
+
             else -> {
                 AlertDialog.Builder(this)
                     .setTitle("MP3-экспорт")
                     .setMessage(
-                        "В этой версии MP3-экспорт работает для OpenAI и Microsoft Edge. " +
-                            "Android/RHVoice, Silero, Azure и Google получат собственный экспорт после подключения соответствующего runtime."
+                        "В этой версии MP3-экспорт работает для OpenAI, Microsoft Edge и Azure Speech. " +
+                            "Android/RHVoice, Silero и Google получат собственный экспорт после подключения соответствующего runtime."
                     )
                     .setPositiveButton("OK", null)
                     .show()
@@ -1304,22 +1402,23 @@ class ReaderActivity : Activity() {
 
         val voice =
             SettingsStore.voice(this).ifBlank {
-                if (engine ==
-                    SettingsStore.ENGINE_EDGE
-                ) {
-                    "ru-RU-DmitryNeural"
-                } else {
-                    "cedar"
+                when (engine) {
+                    SettingsStore.ENGINE_EDGE,
+                    SettingsStore.ENGINE_AZURE ->
+                        "ru-RU-DmitryNeural"
+                    else ->
+                        "cedar"
                 }
             }
 
         val chunks =
-            if (engine ==
-                SettingsStore.ENGINE_EDGE
-            ) {
-                EdgeTtsClient.splitForApi(text)
-            } else {
-                OpenAiTtsClient.splitForApi(text)
+            when (engine) {
+                SettingsStore.ENGINE_EDGE ->
+                    EdgeTtsClient.splitForApi(text)
+                SettingsStore.ENGINE_AZURE ->
+                    AzureTtsClient.splitForApi(text)
+                else ->
+                    OpenAiTtsClient.splitForApi(text)
             }
 
         Thread {
@@ -1350,6 +1449,23 @@ class ReaderActivity : Activity() {
 
                                     SettingsStore.ENGINE_EDGE ->
                                         EdgeTtsClient.synthesize(
+                                            text = chunk,
+                                            voice = voice,
+                                            speed = speechRate,
+                                            context =
+                                                this@ReaderActivity
+                                        )
+
+                                    SettingsStore.ENGINE_AZURE ->
+                                        AzureTtsClient.synthesize(
+                                            speechKey =
+                                                SettingsStore.azureSpeechKey(
+                                                    this
+                                                ),
+                                            region =
+                                                SettingsStore.azureRegion(
+                                                    this
+                                                ),
                                             text = chunk,
                                             voice = voice,
                                             speed = speechRate,
@@ -1410,8 +1526,13 @@ class ReaderActivity : Activity() {
                                         .estimatedCostEuro(text)
                                 )
                             }"
-                        } else {
+                        } else if (
+                            engine ==
+                            SettingsStore.ENGINE_EDGE
+                        ) {
                             "Microsoft Edge: бесплатно"
+                        } else {
+                            "Azure Speech: F0 бесплатно в пределах квоты"
                         }
 
                     resultText.text =
