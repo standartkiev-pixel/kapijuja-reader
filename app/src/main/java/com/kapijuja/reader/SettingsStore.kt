@@ -15,7 +15,9 @@ object SettingsStore {
     private const val KEY_GOOGLE_API_KEY = "google_api_key"
     private const val KEY_GOOGLE_INSTRUCTIONS = "google_instructions"
 
-    const val DEFAULT_ENGINE = "android:default"
+    const val DEFAULT_ENGINE = "android:com.google.android.tts"
+    const val ENGINE_ANDROID_SYSTEM = "android:default"
+    const val DEFAULT_GOOGLE_ANDROID_VOICE = "ru-ru-x-rud-network"
     const val ENGINE_OPENAI = "cloud:openai"
     const val ENGINE_SILERO = "local:silero"
     const val ENGINE_EDGE = "cloud:edge"
@@ -50,6 +52,7 @@ object SettingsStore {
                 .apply()
             return legacy
         }
+        if (engine == DEFAULT_ENGINE) return DEFAULT_GOOGLE_ANDROID_VOICE
         return ""
     }
 
