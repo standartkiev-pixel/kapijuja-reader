@@ -51,14 +51,36 @@ object VoiceCatalog {
     )
 
     val google = listOf(
-        VoiceChoice("ru-RU-Chirp3-HD-Charon", "Chirp 3 HD Charon — мужской"),
-        VoiceChoice("ru-RU-Chirp3-HD-Fenrir", "Chirp 3 HD Fenrir — мужской"),
-        VoiceChoice("ru-RU-Chirp3-HD-Orus", "Chirp 3 HD Orus — мужской"),
-        VoiceChoice("ru-RU-Chirp3-HD-Puck", "Chirp 3 HD Puck — мужской"),
-        VoiceChoice("ru-RU-Wavenet-B", "WaveNet B — мужской"),
-        VoiceChoice("ru-RU-Wavenet-D", "WaveNet D — мужской"),
-        VoiceChoice("ru-RU-Standard-B", "Standard B — мужской"),
-        VoiceChoice("ru-RU-Standard-D", "Standard D — мужской")
+        VoiceChoice("Gacrux", "Gacrux — mature"),
+        VoiceChoice("Charon", "Charon — informative"),
+        VoiceChoice("Orus", "Orus — firm"),
+        VoiceChoice("Algenib", "Algenib — gravelly"),
+        VoiceChoice("Schedar", "Schedar — even"),
+        VoiceChoice("Sadaltager", "Sadaltager — knowledgeable"),
+        VoiceChoice("Sulafat", "Sulafat — warm"),
+        VoiceChoice("Iapetus", "Iapetus — clear"),
+        VoiceChoice("Alnilam", "Alnilam — firm"),
+        VoiceChoice("Rasalgethi", "Rasalgethi — informative"),
+        VoiceChoice("Puck", "Puck — upbeat"),
+        VoiceChoice("Fenrir", "Fenrir — excitable"),
+        VoiceChoice("Kore", "Kore — firm"),
+        VoiceChoice("Zephyr", "Zephyr — bright"),
+        VoiceChoice("Leda", "Leda — youthful"),
+        VoiceChoice("Aoede", "Aoede — breezy"),
+        VoiceChoice("Callirrhoe", "Callirrhoe — easy-going"),
+        VoiceChoice("Autonoe", "Autonoe — bright"),
+        VoiceChoice("Enceladus", "Enceladus — breathy"),
+        VoiceChoice("Umbriel", "Umbriel — easy-going"),
+        VoiceChoice("Algieba", "Algieba — smooth"),
+        VoiceChoice("Despina", "Despina — smooth"),
+        VoiceChoice("Erinome", "Erinome — clear"),
+        VoiceChoice("Laomedeia", "Laomedeia — upbeat"),
+        VoiceChoice("Achernar", "Achernar — soft"),
+        VoiceChoice("Pulcherrima", "Pulcherrima — forward"),
+        VoiceChoice("Achird", "Achird — friendly"),
+        VoiceChoice("Zubenelgenubi", "Zubenelgenubi — casual"),
+        VoiceChoice("Vindemiatrix", "Vindemiatrix — gentle"),
+        VoiceChoice("Sadachbia", "Sadachbia — lively")
     )
 
     val edge = listOf(
@@ -81,7 +103,7 @@ object VoiceCatalog {
         SettingsStore.ENGINE_SILERO -> "eugene"
         SettingsStore.ENGINE_EDGE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_AZURE -> "ru-RU-DmitryNeural"
-        SettingsStore.ENGINE_GOOGLE -> "ru-RU-Chirp3-HD-Charon"
+        SettingsStore.ENGINE_GOOGLE -> "Gacrux"
         else -> ""
     }
 }
