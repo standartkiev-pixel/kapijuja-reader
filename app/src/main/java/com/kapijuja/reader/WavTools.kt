@@ -74,6 +74,52 @@ object WavTools {
         output.flush()
     }
 
+    fun pcmToWavTo(
+        pcmFile: File,
+        output: OutputStream,
+        sampleRate: Int,
+        channels: Int,
+        bitsPerSample: Int
+    ) {
+        require(sampleRate > 0 && channels > 0 && bitsPerSample > 0) {
+            "Некорректный PCM формат"
+        }
+
+        val dataSize = pcmFile.length()
+        require(dataSize <= 0xFFFF_FFFFL - 64L) {
+            "WAV больше 4 ГБ не поддерживается"
+        }
+
+        val byteRate =
+            sampleRate.toLong() * channels.toLong() * bitsPerSample.toLong() / 8L
+        val blockAlign =
+            channels * bitsPerSample / 8
+
+        output.writeAscii("RIFF")
+        output.writeLe32((36L + dataSize).toInt())
+        output.writeAscii("WAVE")
+        output.writeAscii("fmt ")
+        output.writeLe32(16)
+        output.writeLe16(1)
+        output.writeLe16(channels)
+        output.writeLe32(sampleRate)
+        output.writeLe32(byteRate.toInt())
+        output.writeLe16(blockAlign)
+        output.writeLe16(bitsPerSample)
+        output.writeAscii("data")
+        output.writeLe32(dataSize.toInt())
+
+        val buffer = ByteArray(64 * 1024)
+        pcmFile.inputStream().buffered().use { input ->
+            while (true) {
+                val count = input.read(buffer)
+                if (count <= 0) break
+                output.write(buffer, 0, count)
+            }
+        }
+        output.flush()
+    }
+
     private fun parse(file: File): Parsed {
         RandomAccessFile(file, "r").use { input ->
             require(input.length() >= 44L) { "Слишком короткий WAV" }
@@ -165,6 +211,11 @@ object WavTools {
 
     private fun OutputStream.writeAscii(value: String) {
         write(value.toByteArray(Charsets.US_ASCII))
+    }
+
+    private fun OutputStream.writeLe16(value: Int) {
+        write(value and 0xff)
+        write((value ushr 8) and 0xff)
     }
 
     private fun OutputStream.writeLe32(value: Int) {
