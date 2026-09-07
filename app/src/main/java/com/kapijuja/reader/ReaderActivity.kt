@@ -48,6 +48,8 @@ class ReaderActivity : Activity() {
 
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var activeAndroidEngine: String? = null
+    private var activeAndroidVoice: String? = null
     private var mediaPlayer: MediaPlayer? = null
     private var openAiTempFile: File? = null
     private var generationToken = 0
@@ -70,6 +72,22 @@ class ReaderActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        val selectedEngine = SettingsStore.engine(this)
+        val selectedVoice = SettingsStore.voice(this)
+        if (ttsReady && selectedEngine.startsWith("android:") &&
+            (selectedEngine != activeAndroidEngine || selectedVoice != activeAndroidVoice)
+        ) {
+            AppDiagnostics.info(
+                this,
+                "Android TTS settings changed; reinitializing engine=$selectedEngine voice=$selectedVoice"
+            )
+            tts?.stop()
+            tts?.shutdown()
+            tts = null
+            ttsReady = false
+            activeAndroidEngine = null
+            activeAndroidVoice = null
+        }
         if (::engineButton.isInitialized) updateEngineLabels()
     }
 
@@ -94,6 +112,7 @@ class ReaderActivity : Activity() {
             setBackgroundResource(R.drawable.kapijuja_screen_bg)
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
+        KapijujaUiTheme.applySafeArea(root)
 
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -348,19 +367,42 @@ class ReaderActivity : Activity() {
                 ttsReady = true
                 tts?.setSpeechRate(speechRate)
                 val configuredVoice = SettingsStore.voice(this)
+                var appliedVoice = tts?.voice?.name.orEmpty()
+
                 if (configuredVoice.isNotBlank()) {
-                    tts?.voices?.firstOrNull { it.name == configuredVoice }?.let {
-                        tts?.voice = it
+                    val voice = tts?.voices?.firstOrNull { it.name == configuredVoice }
+                    if (voice != null) {
+                        tts?.voice = voice
+                        appliedVoice = voice.name
+                        AppDiagnostics.info(
+                            this,
+                            "Android TTS voice applied: engine=$engineId voice=${voice.name} locale=${voice.locale}"
+                        )
+                    } else {
+                        AppDiagnostics.error(
+                            this,
+                            "Configured Android voice not found: engine=$engineId voice=$configuredVoice"
+                        )
+                        Toast.makeText(
+                            this,
+                            "Выбранный голос не найден в этом движке; используется голос по умолчанию.",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
+
+                activeAndroidEngine = engineId
+                activeAndroidVoice = configuredVoice.ifBlank { appliedVoice }
                 installProgressListener()
                 updateEngineLabels()
                 onReady()
             } else {
+                AppDiagnostics.error(this, "Android TTS init failed: engine=$engineId status=$status")
                 Toast.makeText(this, "TTS движок не запустился", Toast.LENGTH_LONG).show()
             }
         }
 
+        AppDiagnostics.info(this, "Initializing Android TTS: engine=$engineId package=$packageName")
         tts = if (packageName == null) {
             TextToSpeech(this, listener)
         } else {
@@ -484,7 +526,8 @@ class ReaderActivity : Activity() {
                     text = segment.spoken,
                     voice = voice,
                     instructions = instructions,
-                    speed = speechRate
+                    speed = speechRate,
+                    context = this@ReaderActivity
                 )
                 if (token != generationToken) return@Thread
 
@@ -495,39 +538,70 @@ class ReaderActivity : Activity() {
                         file.delete()
                         return@post
                     }
-                    openAiTempFile?.delete()
-                    openAiTempFile = file
+                    // Stop/delete the PREVIOUS player before registering the newly
+                    // generated file. 0.1.1 did this in the opposite order and
+                    // deleted its own MP3 immediately before setDataSource().
                     stopMediaOnly()
-                    mediaPlayer = MediaPlayer().apply {
-                        setDataSource(file.absolutePath)
-                        setOnCompletionListener {
-                            it.release()
-                            mediaPlayer = null
-                            file.delete()
-                            if (token != generationToken) return@setOnCompletionListener
-                            if (index >= segments.lastIndex) {
-                                this@ReaderActivity.isPlaying = false
-                                currentSegment = 0
-                                playPause.text = "Сначала"
-                                listenButton.text = "Слушать"
-                            } else {
-                                playOpenAiSegment(index + 1, token)
+                    openAiTempFile = file
+
+                    try {
+                        mediaPlayer = MediaPlayer().apply {
+                            setDataSource(file.absolutePath)
+                            setOnCompletionListener {
+                                it.release()
+                                mediaPlayer = null
+                                if (openAiTempFile == file) openAiTempFile = null
+                                file.delete()
+                                if (token != generationToken) return@setOnCompletionListener
+                                if (index >= segments.lastIndex) {
+                                    this@ReaderActivity.isPlaying = false
+                                    currentSegment = 0
+                                    playPause.text = "Сначала"
+                                    listenButton.text = "Слушать"
+                                } else {
+                                    playOpenAiSegment(index + 1, token)
+                                }
                             }
+                            setOnErrorListener { mp, what, extra ->
+                                AppDiagnostics.error(
+                                    this@ReaderActivity,
+                                    "MediaPlayer error: what=$what extra=$extra fileExists=${file.exists()} size=${file.length()}"
+                                )
+                                mp.release()
+                                mediaPlayer = null
+                                if (openAiTempFile == file) openAiTempFile = null
+                                file.delete()
+                                this@ReaderActivity.isPlaying = false
+                                playPause.text = "Продолжить"
+                                listenButton.text = "Слушать"
+                                true
+                            }
+                            prepare()
+                            start()
                         }
-                        setOnErrorListener { mp, _, _ ->
-                            mp.release()
-                            mediaPlayer = null
-                            this@ReaderActivity.isPlaying = false
-                            playPause.text = "Продолжить"
-                            listenButton.text = "Слушать"
-                            true
-                        }
-                        prepare()
-                        start()
+                        AppDiagnostics.info(
+                            this@ReaderActivity,
+                            "OpenAI playback started: segment=$index file=${file.name} bytes=${file.length()}"
+                        )
+                        listenButton.text = "Читается"
+                    } catch (t: Throwable) {
+                        if (openAiTempFile == file) openAiTempFile = null
+                        file.delete()
+                        mediaPlayer?.release()
+                        mediaPlayer = null
+                        this@ReaderActivity.isPlaying = false
+                        playPause.text = "Продолжить"
+                        listenButton.text = "Слушать"
+                        AppDiagnostics.error(this@ReaderActivity, "OpenAI MediaPlayer setup failed", t)
+                        Toast.makeText(
+                            this@ReaderActivity,
+                            "Ошибка воспроизведения OpenAI: ${t.message}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
-                    listenButton.text = "Читается"
                 }
             } catch (t: Throwable) {
+                AppDiagnostics.error(this@ReaderActivity, "OpenAI TTS segment failed: index=$index", t)
                 mainHandler.post {
                     if (token != generationToken) return@post
                     isPlaying = false
@@ -750,7 +824,8 @@ class ReaderActivity : Activity() {
                             text = chunk,
                             voice = voice,
                             instructions = instructions,
-                            speed = speechRate
+                            speed = speechRate,
+                            context = this@ReaderActivity
                         )
                         output.write(
                             if (index == 0) bytes else OpenAiTtsClient.stripLeadingId3(bytes)
