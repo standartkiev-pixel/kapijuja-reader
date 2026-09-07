@@ -65,7 +65,7 @@ class SettingsActivity : Activity() {
         top.addView(back, LinearLayout.LayoutParams(dp(58), dp(54)))
 
         val title = TextView(this).apply {
-            text = "⚙ Настройки"
+            text = t("⚙ Настройки", "⚙ Settings")
             textSize = 27f
             setTypeface(typeface, Typeface.BOLD)
             setPadding(dp(12), 0, 0, 0)
@@ -75,7 +75,7 @@ class SettingsActivity : Activity() {
         root.addView(top)
 
         val autoSave = TextView(this).apply {
-            text = "Все изменения сохраняются автоматически при выходе."
+            text = t("Все изменения сохраняются автоматически при выходе.", "All changes are saved automatically when you leave.")
             textSize = 13f
             setPadding(dp(4), dp(4), dp(4), dp(6))
         }
@@ -84,7 +84,7 @@ class SettingsActivity : Activity() {
 
         SettingsStore.migrateDefaults(this)
 
-        root.addView(sectionTitle("Движок"))
+        root.addView(sectionTitle(t("Движок", "Engine")))
         val currentEngine = SettingsStore.engine(this)
         SettingsStore.ensureDefaultVoice(this, currentEngine, VoiceCatalog.defaultVoice(currentEngine))
         engineButton = Button(this).apply {
@@ -95,7 +95,7 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.button(this, engineButton, primary = true)
         root.addView(engineButton, fullButton())
 
-        root.addView(sectionTitle("Голос"))
+        root.addView(sectionTitle(t("Голос", "Voice")))
         voiceButton = Button(this).apply {
             text = currentVoiceLabel()
             textSize = 17f
@@ -113,7 +113,7 @@ class SettingsActivity : Activity() {
 
         root.addView(sectionTitle("OpenAI GPT-4o Mini TTS"))
         val note = TextView(this).apply {
-            text = "Ключ хранится только в данных приложения на этом устройстве. GitHub Secret в APK не встраивается."
+            text = t("Ключ хранится только в данных приложения на этом устройстве. GitHub Secret в APK не встраивается.", "The key is stored only in this app data on this device. GitHub Secrets are never embedded in the APK.")
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -130,7 +130,7 @@ class SettingsActivity : Activity() {
         root.addView(keyInput, inputParams())
 
         instructionInput = EditText(this).apply {
-            hint = "Инструкция голосу"
+            hint = t("Инструкция голосу", "Voice instructions")
             textSize = 15f
             minLines = 4
             gravity = Gravity.TOP
@@ -218,7 +218,7 @@ class SettingsActivity : Activity() {
         root.addView(googleKeyInput, inputParams())
 
         googleInstructionInput = EditText(this).apply {
-            hint = "Инструкция голосу Google"
+            hint = t("Инструкция голосу Google", "Google voice instructions")
             textSize = 15f
             minLines = 4
             gravity = Gravity.TOP
@@ -231,9 +231,9 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.input(this, googleInstructionInput)
         root.addView(googleInstructionInput, inputParams())
 
-        root.addView(sectionTitle("Защита от расходов"))
+        root.addView(sectionTitle(t("Защита от расходов", "Cost protection")))
         val costNote = TextView(this).apply {
-            text = "Порог, после которого приложение обязательно покажет ориентировочную стоимость перед генерацией, €:"
+            text = t("Порог, после которого приложение обязательно покажет ориентировочную стоимость перед генерацией, €:", "Threshold above which the app must show the estimated generation cost, €:")
             textSize = 14f
             setPadding(dp(4), 0, dp(4), dp(8))
         }
@@ -247,10 +247,10 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.input(this, costInput)
         root.addView(costInput, inputParams())
 
-        root.addView(sectionTitle("Сервис"))
+        root.addView(sectionTitle(t("Сервис", "Service")))
 
         val testOpenAi = Button(this).apply {
-            text = "Проверить OpenAI"
+            text = t("Проверить OpenAI", "Test OpenAI")
             textSize = 16f
             setOnClickListener { testOpenAiConnection() }
         }
@@ -258,7 +258,7 @@ class SettingsActivity : Activity() {
         root.addView(testOpenAi, fullButton())
 
         val testAzure = Button(this).apply {
-            text = "Проверить Azure Speech"
+            text = t("Проверить Azure Speech", "Test Azure Speech")
             textSize = 16f
             setOnClickListener {
                 testAzureConnection()
@@ -268,7 +268,7 @@ class SettingsActivity : Activity() {
         root.addView(testAzure, fullButton())
 
         val testGoogle = Button(this).apply {
-            text = "Проверить Google Gemini TTS"
+            text = t("Проверить Google Gemini TTS", "Test Google Gemini TTS")
             textSize = 16f
             setOnClickListener {
                 testGoogleConnection()
@@ -278,17 +278,17 @@ class SettingsActivity : Activity() {
         root.addView(testGoogle, fullButton())
 
         val showLog = Button(this).apply {
-            text = "Показать журнал диагностики"
+            text = t("Показать журнал диагностики", "Show diagnostics log")
             textSize = 16f
             setOnClickListener {
                 AlertDialog.Builder(this@SettingsActivity)
                     .setTitle("Kapijuja Reader — диагностика")
                     .setMessage(AppDiagnostics.lastLines(this@SettingsActivity, 24))
-                    .setNegativeButton("Очистить") { _, _ ->
+                    .setNegativeButton(t("Очистить", "Clear")) { _, _ ->
                         AppDiagnostics.clear(this@SettingsActivity)
                         refreshServiceText()
                     }
-                    .setPositiveButton("Закрыть", null)
+                    .setPositiveButton(t("Закрыть", "Close"), null)
                     .show()
             }
         }
@@ -364,7 +364,7 @@ class SettingsActivity : Activity() {
 
     private fun chooseEngine() {
         val dynamic = mutableListOf<Pair<String, String>>()
-        dynamic += SettingsStore.DEFAULT_ENGINE to "Android TTS — системный"
+        dynamic += SettingsStore.ENGINE_ANDROID_SYSTEM to t("Android TTS — системный", "Android TTS — system default")
 
         val rhVoiceInstalled =
             installedEngines.any {
@@ -406,7 +406,7 @@ class SettingsActivity : Activity() {
         )
 
         AlertDialog.Builder(this)
-            .setTitle("Выберите движок")
+            .setTitle(t("Выберите движок", "Choose engine"))
             .setItems(dynamic.map { it.second }.toTypedArray()) { _, index ->
                 val id = dynamic[index].first
 
@@ -502,7 +502,7 @@ class SettingsActivity : Activity() {
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("Голос")
+            .setTitle(t("Голос", "Voice"))
             .setItems(voices.map { it.label }.toTypedArray()) { _, which ->
                 SettingsStore.setVoice(this, engine, voices[which].id)
                 voiceButton.text = voices[which].label
@@ -570,7 +570,7 @@ class SettingsActivity : Activity() {
                 return@OnInitListener
             }
             AlertDialog.Builder(this)
-                .setTitle("Голос")
+                .setTitle(t("Голос", "Voice"))
                 .setItems(voices.map {
                     val locale = it.locale?.toLanguageTag().orEmpty()
                     "${it.name}  $locale"
@@ -796,12 +796,13 @@ class SettingsActivity : Activity() {
     private fun currentVoiceLabel(): String {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
-        if (id.isBlank()) return "Выбрать голос"
+        if (id.isBlank()) return t("Выбрать голос", "Choose voice")
         return VoiceCatalog.staticVoices(engine).firstOrNull { it.id == id }?.label ?: id
     }
 
     private fun engineLabel(id: String): String = when {
-        id == SettingsStore.DEFAULT_ENGINE -> "Android TTS — системный"
+        id == SettingsStore.DEFAULT_ENGINE -> t("Google Android TTS — по умолчанию", "Google Android TTS — default")
+        id == SettingsStore.ENGINE_ANDROID_SYSTEM -> t("Android TTS — системный", "Android TTS — system default")
         id == SettingsStore.ENGINE_OPENAI -> "OpenAI — GPT-4o Mini TTS"
         id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
         id == SettingsStore.ENGINE_EDGE -> "Microsoft Edge — тест"
@@ -837,6 +838,8 @@ class SettingsActivity : Activity() {
         probeTts?.shutdown()
         super.onDestroy()
     }
+
+    private fun t(ru: String, en: String) = UiText.get(this, ru, en)
 
     private fun dp(v: Int) = KapijujaUiTheme.dp(this, v)
 }
