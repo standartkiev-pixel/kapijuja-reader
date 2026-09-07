@@ -3,9 +3,122 @@
 Дата состояния: 2026-09-07  
 Репозиторий: `standartkiev-pixel/kapijuja-reader`  
 Основная ветка: `main`  
-Текущая версия: `0.1.5`  
-`versionCode = 6`  
+Текущая версия: `0.1.6`  
+`versionCode = 7`  
 Android package / applicationId: `com.kapijuja.reader`
+
+
+## Обновление 0.1.6 — 2026-09-07
+
+Эта секция новее остальных частей handoff и имеет приоритет при расхождениях.
+
+### Дефолт Android TTS
+
+Для ЧИСТОЙ установки теперь:
+- engine: `android:com.google.android.tts`
+- preferred voice: `ru-ru-x-rud-network`
+
+Существующие пользовательские настройки не перетираются. Если точного network-голоса на другом телефоне нет, Reader выбирает другой русский network voice, затем любой русский voice.
+
+Отдельно сохранён пункт `android:default` как системный Android TTS.
+
+### Reader UI
+
+Удалена дублирующая верхняя кнопка «Слушать». Справа сверху остались только «Настройки».
+
+В нижнем player одна основная кнопка:
+`Слушать -> Пауза -> Продолжить`.
+
+Player виден сразу. Редактирование теперь использует кнопку «Редактировать -> Сохранить», при этом остальные конфликтующие controls временно блокируются.
+
+Tap-to-start, подсветка, CloudChunk и prebuffer НЕ переделывались.
+
+### RU / EN локализация
+
+Добавлен лёгкий `UiText.kt`: если основной язык телефона русский — интерфейс русский, иначе английский.
+
+Основные Main / Reader / Settings menus, player controls, background controls и export controls локализованы. Не добавлять тяжёлый localization framework ради этой задачи.
+
+### Android TTS audio export
+
+Android TTS теперь умеет сохранять выбранный голос, включая Google Android network voices, через официальный `TextToSpeech.synthesizeToFile()`.
+
+Формат Android TTS: WAV, не MP3.
+
+Причина: не добавлять MP3 encoder и не раздувать APK. Для длинного текста создаются WAV fragments, затем `WavTools.kt` локально объединяет RIFF/WAV в один файл без внешней зависимости.
+
+Cloud:
+- OpenAI -> MP3
+- Edge -> MP3
+- Azure -> MP3
+- Google Gemini -> WAV
+- Android TTS / RHVoice -> WAV
+
+### Отмена экспорта
+
+При создании аудио кнопка становится:
+`Отменить MP3` или `Отменить WAV`.
+
+Экспорт проверяет cancellation между chunks. Android TTS synthesis останавливается через `tts.stop()`; network request, уже ушедший в облако, может физически закончиться, но следующие chunks больше не отправляются.
+
+ProgressBar перенесён выше export buttons и увеличен по толщине.
+
+### Edge timeout из bugreport
+
+Bugreport пользователя от 2026-09-07 оказался правильным.
+
+В нём Edge export request около 2983 UTF-8 bytes подключался, но не возвращал audio до 65 s timeout, тогда как меньшие playback chunks проходили.
+
+Поэтому `EdgeTtsClient.MAX_TEXT_BYTES` уменьшен с ~3200 до 1800 bytes для дополнительного mobile-network safety margin.
+
+### Фоновое чтение
+
+Добавлены:
+- foreground service типа `mediaPlayback`
+- `MediaSession`
+- MediaStyle notification
+- Pause / Resume / Stop из шторки
+- первый prompt на notification permission (Android 13+)
+- запрос снятия battery optimization
+- permissions FOREGROUND_SERVICE / MEDIA_PLAYBACK / WAKE_LOCK
+
+`INTERNET` уже был в manifest; это обычное install-time permission без runtime dialog.
+
+В 0.1.6 service сохраняет текущую ReaderActivity playback architecture: TTS / MediaPlayer не переносились целиком в service, чтобы не ломать рабочий CloudChunk/prebuffer. На устройстве обязательно проверить screen-off + notification controls + 30-60 min background playback.
+
+### Silero v5.5
+
+НЕ объявлять рабочим.
+
+Проверено: официальный v5.5 Russian model распространяется как PyTorch package `v5_5_ru.pt`, а не готовый Android TorchScript module. Android PyTorch Lite runtime сам по себе добавляет порядка 72 МБ ещё до модели, и стандартный Android `Module.load()` не является прямым loader для этого package format.
+
+Поэтому runtime намеренно НЕ встроен в основной APK 0.1.6: иначе маленькое приложение резко раздуется, а v5.5 всё равно потребует отдельной conversion/adaptation стадии.
+
+Silero оставлен одной из следующих экспериментальных задач. Если тестировать — лучше отдельный experimental build/flavor, чтобы его можно было полностью выпилить без влияния на base APK.
+
+### GitHub Actions / APK
+
+Actions artifact storage quota 2026-09-07 была переполнена. Сам APK при этом компилировался и подписывался успешно, падал только `actions/upload-artifact`.
+
+Workflow изменён:
+- artifact upload = best effort, retention 7 days
+- дополнительно signed APK публикуется/перезаписывается в prerelease tag:
+  `kapijuja-reader-latest-test`
+
+Стабильная страница последнего тестового APK:
+https://github.com/standartkiev-pixel/kapijuja-reader/releases/tag/kapijuja-reader-latest-test
+
+Следующая проверка на устройстве:
+- fresh install default Google Android TTS + `ru-ru-x-rud-network`
+- single Listen/Pause/Resume button
+- English UI при нерусской системной локали
+- Android network voice -> WAV export
+- cancel MP3/WAV
+- длинный Edge MP3 после 1800-byte chunks
+- background screen-off + notification Pause/Resume/Stop
+- Azure/Google/OpenAI regression
+- tap-to-start regression
+
 
 ## Что это за проект
 
