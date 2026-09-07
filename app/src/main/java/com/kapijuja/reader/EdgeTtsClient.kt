@@ -33,7 +33,10 @@ object EdgeTtsClient {
     // Russian Cyrillic is commonly 2 bytes per character, so the old 3400-char
     // export chunk could exceed the service's ~4 KiB text envelope and the socket
     // was closed mid-generation. Keep a safety margin for XML escaping/SSML.
-    private const val MAX_TEXT_BYTES = 3200
+    // Bugreport 2026-09-07: a ~3 KB Russian export request connected but
+    // returned no audio before the 65 s timeout. Playback-sized requests were
+    // reliable, so file export now uses a wider UTF-8 safety margin.
+    private const val MAX_TEXT_BYTES = 1800
 
     @Volatile
     private var clockSkewSeconds = 0.0
