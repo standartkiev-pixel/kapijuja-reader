@@ -725,10 +725,14 @@ class ReaderActivity : Activity() {
             AlertDialog.Builder(this)
                 .setTitle("OpenAI API key")
                 .setMessage(
-                    "Введите API key в Настройках. GitHub Secret внутрь APK не встраивается."
+                    t(
+                        "Введите API key в Настройках. GitHub Secret внутрь APK не встраивается.",
+                        "Wprowadź klucz API w Ustawieniach. GitHub Secret nie jest osadzany w APK.",
+                        "Enter the API key in Settings. GitHub Secrets are not embedded in the APK."
+                    )
                 )
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Настройки") { _, _ ->
+                .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+                .setPositiveButton(t("Настройки", "Ustawienia", "Settings")) { _, _ ->
                     startActivity(
                         Intent(
                             this,
@@ -758,14 +762,22 @@ class ReaderActivity : Activity() {
 
         val mins = OpenAiTtsClient.estimatedMinutes(remaining)
         AlertDialog.Builder(this)
-            .setTitle("Платная озвучка OpenAI")
-            .setMessage(
-                "Осталось примерно ${String.format(Locale.US, "%.1f", mins)} мин. " +
-                    "Ориентировочная стоимость ≈ €${String.format(Locale.US, "%.2f", cost)}. " +
-                    "Продолжить?"
+            .setTitle(
+                t(
+                    "Платная озвучка OpenAI",
+                    "Płatna synteza OpenAI",
+                    "Paid OpenAI narration"
+                )
             )
-            .setNegativeButton("Нет", null)
-            .setPositiveButton("Озвучить") { _, _ ->
+            .setMessage(
+                t(
+                    "Осталось примерно ${String.format(Locale.US, "%.1f", mins)} мин. Ориентировочная стоимость ≈ €${String.format(Locale.US, "%.2f", cost)}. Продолжить?",
+                    "Pozostało około ${String.format(Locale.US, "%.1f", mins)} min. Szacowany koszt ≈ €${String.format(Locale.US, "%.2f", cost)}. Kontynuować?",
+                    "About ${String.format(Locale.US, "%.1f", mins)} min remain. Estimated cost ≈ €${String.format(Locale.US, "%.2f", cost)}. Continue?"
+                )
+            )
+            .setNegativeButton(t("Нет", "Nie", "No"), null)
+            .setPositiveButton(t("Озвучить", "Generuj", "Generate")) { _, _ ->
                 openAiConfirmedHash = hash
                 startOpenAiFrom(currentSegment)
             }
@@ -785,65 +797,57 @@ class ReaderActivity : Activity() {
     }
 
     private fun startAzureFrom(index: Int) {
-        val key =
-            SettingsStore.azureSpeechKey(this)
-        val region =
-            SettingsStore.azureRegion(this)
+        val key = SettingsStore.azureSpeechKey(this)
+        val region = SettingsStore.azureRegion(this)
 
         if (key.isBlank() || region.isBlank()) {
             AlertDialog.Builder(this)
                 .setTitle("Azure Speech")
                 .setMessage(
-                    "Введите Azure Speech key и region в Настройках."
+                    t(
+                        "Введите Azure Speech key и region в Настройках.",
+                        "Wprowadź klucz Azure Speech i region w Ustawieniach.",
+                        "Enter the Azure Speech key and region in Settings."
+                    )
                 )
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Настройки") { _, _ ->
+                .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+                .setPositiveButton(t("Настройки", "Ustawienia", "Settings")) { _, _ ->
                     startActivity(
-                        Intent(
-                            this,
-                            SettingsActivity::class.java
-                        )
+                        Intent(this, SettingsActivity::class.java)
                     )
                 }
                 .show()
             return
         }
 
-        startCloudFrom(
-            index,
-            SettingsStore.ENGINE_AZURE
-        )
+        startCloudFrom(index, SettingsStore.ENGINE_AZURE)
     }
 
     private fun startGoogleFrom(index: Int) {
-        val key =
-            SettingsStore.googleApiKey(this)
+        val key = SettingsStore.googleApiKey(this)
 
         if (key.isBlank()) {
             AlertDialog.Builder(this)
                 .setTitle("Google Gemini TTS")
                 .setMessage(
-                    "Введите Google Gemini API key в Настройках."
+                    t(
+                        "Введите Google Gemini API key в Настройках.",
+                        "Wprowadź klucz API Google Gemini w Ustawieniach.",
+                        "Enter the Google Gemini API key in Settings."
+                    )
                 )
-                .setNegativeButton("Отмена", null)
-                .setPositiveButton("Настройки") { _, _ ->
+                .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+                .setPositiveButton(t("Настройки", "Ustawienia", "Settings")) { _, _ ->
                     startActivity(
-                        Intent(
-                            this,
-                            SettingsActivity::class.java
-                        )
+                        Intent(this, SettingsActivity::class.java)
                     )
                 }
                 .show()
             return
         }
 
-        startCloudFrom(
-            index,
-            SettingsStore.ENGINE_GOOGLE
-        )
+        startCloudFrom(index, SettingsStore.ENGINE_GOOGLE)
     }
-
     private fun startCloudFrom(
         index: Int,
         engine: String
