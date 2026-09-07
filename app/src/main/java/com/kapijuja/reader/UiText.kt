@@ -51,6 +51,123 @@ object UiText {
             else -> "English"
         }
 
+    fun localizeMessage(context: Context, message: String): String {
+        if (message.isBlank() || language(context) == SettingsStore.UI_LANGUAGE_RU) {
+            return message
+        }
+
+        val pl = language(context) == SettingsStore.UI_LANGUAGE_PL
+
+        fun pick(polish: String, english: String) =
+            if (pl) polish else english
+
+        return when {
+            message == "OpenAI доступен. DNS, интернет и API key работают." ->
+                pick(
+                    "OpenAI jest dostępny. DNS, internet i klucz API działają.",
+                    "OpenAI is available. DNS, internet and the API key work."
+                )
+
+            message == "Azure Speech доступен; русский Dmitry Neural найден." ->
+                pick(
+                    "Azure Speech jest dostępny; znaleziono rosyjski głos Dmitry Neural.",
+                    "Azure Speech is available; Russian Dmitry Neural was found."
+                )
+
+            message == "Azure Speech доступен; список голосов получен." ->
+                pick(
+                    "Azure Speech jest dostępny; pobrano listę głosów.",
+                    "Azure Speech is available; the voice list was received."
+                )
+
+            message == "Google Gemini 2.5 Flash TTS доступен." ->
+                pick(
+                    "Google Gemini 2.5 Flash TTS jest dostępny.",
+                    "Google Gemini 2.5 Flash TTS is available."
+                )
+
+            message == "Пустой текст" ->
+                pick("Pusty tekst", "Empty text")
+
+            message == "Не удалось открыть файл" ->
+                pick("Nie udało się otworzyć pliku", "Could not open file")
+
+            message == "PDF будет подключён на следующем шаге" ->
+                pick(
+                    "Obsługa PDF zostanie dodana w kolejnym kroku.",
+                    "PDF support will be added in the next step."
+                )
+
+            message == "Старый DOC будет подключён на следующем шаге" ->
+                pick(
+                    "Obsługa starego formatu DOC zostanie dodana w kolejnym kroku.",
+                    "Legacy DOC support will be added in the next step."
+                )
+
+            message == "Пока поддерживаются TXT/MD/HTML/DOCX" ->
+                pick(
+                    "Obecnie obsługiwane są TXT/MD/HTML/DOCX.",
+                    "Currently supported: TXT/MD/HTML/DOCX."
+                )
+
+            message == "В DOCX не найден текст" ->
+                pick(
+                    "Nie znaleziono tekstu w DOCX.",
+                    "No text was found in the DOCX."
+                )
+
+            message.contains("таймаут ожидания аудио", ignoreCase = true) ->
+                pick(
+                    "Microsoft Edge TTS: przekroczono czas oczekiwania na audio.",
+                    "Microsoft Edge TTS: audio response timed out."
+                )
+
+            message.startsWith("OpenAI API key не указан") ->
+                pick(
+                    "Nie podano klucza API OpenAI.",
+                    "OpenAI API key is missing."
+                )
+
+            message.startsWith("Azure Speech key не указан") ->
+                pick(
+                    "Nie podano klucza Azure Speech.",
+                    "Azure Speech key is missing."
+                )
+
+            message.startsWith("Google Gemini API key не указан") ->
+                pick(
+                    "Nie podano klucza API Google Gemini.",
+                    "Google Gemini API key is missing."
+                )
+
+            message.startsWith("Голос Microsoft Edge не выбран") ->
+                pick(
+                    "Nie wybrano głosu Microsoft Edge.",
+                    "Microsoft Edge voice is not selected."
+                )
+
+            message.startsWith("Google voice не выбран") ->
+                pick(
+                    "Nie wybrano głosu Google.",
+                    "Google voice is not selected."
+                )
+
+            message.startsWith("Azure voice не выбран") ->
+                pick(
+                    "Nie wybrano głosu Azure.",
+                    "Azure voice is not selected."
+                )
+
+            message.startsWith("Не удалось") ->
+                pick(
+                    "Nie udało się: " + message.removePrefix("Не удалось").trimStart(':', ' '),
+                    "Failed: " + message.removePrefix("Не удалось").trimStart(':', ' ')
+                )
+
+            else -> message
+        }
+    }
+
     private fun polish(ru: String): String? =
         when (ru) {
             "⚙ Настройки" -> "⚙ Ustawienia"
