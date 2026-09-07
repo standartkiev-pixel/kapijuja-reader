@@ -48,13 +48,30 @@ class MainActivity : Activity() {
             setPadding(dp(20), dp(18), dp(20), dp(104))
         }
 
+        val topRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
         val title = TextView(this).apply {
             text = "Kapijuja Reader"
             textSize = 30f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
         KapijujaUiTheme.title(title)
-        column.addView(title)
+        topRow.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val settings = Button(this).apply {
+            text = "⚙ Настройки"
+            textSize = 14f
+            setOnClickListener {
+                startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+            }
+        }
+        KapijujaUiTheme.button(this, settings)
+        topRow.addView(settings, LinearLayout.LayoutParams(dp(132), dp(50)))
+
+        column.addView(topRow)
 
         val subtitle = TextView(this).apply {
             text = "Библиотека"
