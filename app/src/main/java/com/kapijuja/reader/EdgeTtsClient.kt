@@ -29,6 +29,12 @@ object EdgeTtsClient {
     private const val SEC_MS_GEC_VERSION = "1-$CHROMIUM_FULL_VERSION"
     private const val WIN_EPOCH = 11644473600L
 
+    // edge-tts upstream splits text by UTF-8 bytes, not by Java/Kotlin characters.
+    // Russian Cyrillic is commonly 2 bytes per character, so the old 3400-char
+    // export chunk could exceed the service's ~4 KiB text envelope and the socket
+    // was closed mid-generation. Keep a safety margin for XML escaping/SSML.
+    private const val MAX_TEXT_BYTES = 3200
+
     @Volatile
     private var clockSkewSeconds = 0.0
 
@@ -47,17 +53,58 @@ object EdgeTtsClient {
         require(text.isNotBlank()) { "Пустой текст" }
         require(voice.isNotBlank()) { "Голос Microsoft Edge не выбран" }
 
+        val chunks = splitForApi(text)
+        if (chunks.size > 1) {
+            AppDiagnostics.info(
+                context,
+                "Edge text split by UTF-8 bytes: chars=${text.length} bytes=${text.toByteArray(Charsets.UTF_8).size} chunks=${chunks.size}"
+            )
+        }
+
+        val combined = ByteArrayOutputStream()
+        chunks.forEachIndexed { index, chunk ->
+            val bytes = synthesizeChunkWithRetry(
+                text = chunk,
+                voice = voice,
+                speed = speed,
+                context = context,
+                chunkIndex = index,
+                chunkCount = chunks.size
+            )
+            combined.write(bytes)
+            if (index + 1 < chunks.size) {
+                // A very small pause reduces consecutive WebSocket aborts during
+                // long file export without affecting perceived playback.
+                Thread.sleep(90)
+            }
+        }
+
+        return combined.toByteArray()
+    }
+
+    private fun synthesizeChunkWithRetry(
+        text: String,
+        voice: String,
+        speed: Float,
+        context: Context?,
+        chunkIndex: Int,
+        chunkCount: Int
+    ): ByteArray {
         var last: Throwable? = null
-        for (attempt in 1..2) {
+
+        for (attempt in 1..3) {
             try {
                 AppDiagnostics.info(
                     context,
-                    "Edge TTS request: voice=$voice chars=${text.length} speed=$speed attempt=$attempt"
+                    "Edge TTS request: voice=$voice chars=${text.length} bytes=${text.toByteArray(Charsets.UTF_8).size} speed=$speed chunk=${chunkIndex + 1}/$chunkCount attempt=$attempt"
                 )
-                return synthesizeOnce(text.take(3800), voice, speed, context)
+                return synthesizeOnce(text, voice, speed, context)
             } catch (e: EdgeForbiddenException) {
                 last = e
-                if (attempt == 1 && e.serverDate != null && adjustClockSkew(e.serverDate)) {
+                if (attempt == 1 &&
+                    e.serverDate != null &&
+                    adjustClockSkew(e.serverDate)
+                ) {
                     AppDiagnostics.info(
                         context,
                         "Edge 403: adjusted clock skew to ${String.format(Locale.US, "%.2f", clockSkewSeconds)}s and retrying"
@@ -70,9 +117,19 @@ object EdgeTtsClient {
                 )
             } catch (t: Throwable) {
                 last = t
+                if (attempt < 3 && isRetryableNetwork(t)) {
+                    AppDiagnostics.error(
+                        context,
+                        "Edge transient network failure; retry $attempt/3",
+                        t
+                    )
+                    Thread.sleep(350L * attempt)
+                    continue
+                }
                 break
             }
         }
+
         throw IllegalStateException(
             "Microsoft Edge TTS: ${last?.message ?: "не удалось получить аудио"}",
             last
@@ -89,6 +146,7 @@ object EdgeTtsClient {
         val done = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>(null)
         val connectionId = randomHex()
+
         val url =
             "wss://$BASE/edge/v1" +
                 "?TrustedClientToken=$TRUSTED_CLIENT_TOKEN" +
@@ -115,8 +173,15 @@ object EdgeTtsClient {
             .build()
 
         val listener = object : WebSocketListener() {
-            override fun onOpen(webSocket: WebSocket, response: Response) {
-                AppDiagnostics.info(context, "Edge WebSocket connected HTTP ${response.code}")
+            override fun onOpen(
+                webSocket: WebSocket,
+                response: Response
+            ) {
+                AppDiagnostics.info(
+                    context,
+                    "Edge WebSocket connected HTTP ${response.code}"
+                )
+
                 val config =
                     "X-Timestamp:${edgeTimestamp()}\r\n" +
                         "Content-Type:application/json; charset=utf-8\r\n" +
@@ -130,6 +195,7 @@ object EdgeTtsClient {
 
                 val requestId = randomHex()
                 val rate = ratePercent(speed)
+
                 val ssml =
                     "<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='ru-RU'>" +
                         "<voice name='${escapeXml(voice)}'>" +
@@ -144,37 +210,56 @@ object EdgeTtsClient {
                         "Path:ssml\r\n\r\n" +
                         ssml
 
-                if (!webSocket.send(config) || !webSocket.send(speech)) {
+                if (!webSocket.send(config) ||
+                    !webSocket.send(speech)
+                ) {
                     failure.compareAndSet(
                         null,
-                        IllegalStateException("Microsoft Edge: не удалось отправить запрос")
+                        IllegalStateException(
+                            "Microsoft Edge: не удалось отправить запрос"
+                        )
                     )
                     done.countDown()
                 }
             }
 
-            override fun onMessage(webSocket: WebSocket, text: String) {
+            override fun onMessage(
+                webSocket: WebSocket,
+                text: String
+            ) {
                 when {
                     text.contains("Path:turn.end") -> {
                         webSocket.close(1000, "done")
                         done.countDown()
                     }
+
                     text.contains("Path:audio.metadata") -> Unit
                     text.contains("Path:turn.start") -> Unit
                     text.contains("Path:response") -> Unit
                 }
             }
 
-            override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
+            override fun onMessage(
+                webSocket: WebSocket,
+                bytes: ByteString
+            ) {
                 val data = bytes.toByteArray()
                 if (data.size < 2) return
+
                 val headerLength =
                     ((data[0].toInt() and 0xff) shl 8) or
                         (data[1].toInt() and 0xff)
+
                 val dataStart = 2 + headerLength
-                if (dataStart <= data.size && dataStart < data.size) {
+                if (dataStart <= data.size &&
+                    dataStart < data.size
+                ) {
                     synchronized(output) {
-                        output.write(data, dataStart, data.size - dataStart)
+                        output.write(
+                            data,
+                            dataStart,
+                            data.size - dataStart
+                        )
                     }
                 }
             }
@@ -186,15 +271,23 @@ object EdgeTtsClient {
             ) {
                 val error: Throwable =
                     if (response?.code == 403) {
-                        EdgeForbiddenException(response.header("Date"), t)
+                        EdgeForbiddenException(
+                            response.header("Date"),
+                            t
+                        )
                     } else {
                         IllegalStateException(
                             "Microsoft Edge WebSocket: HTTP ${response?.code ?: "-"} ${t.message ?: ""}",
                             t
                         )
                     }
+
                 failure.compareAndSet(null, error)
-                AppDiagnostics.error(context, "Edge WebSocket failure", error)
+                AppDiagnostics.error(
+                    context,
+                    "Edge WebSocket failure",
+                    error
+                )
                 done.countDown()
             }
 
@@ -207,52 +300,204 @@ object EdgeTtsClient {
             }
         }
 
-        val socket = client.newWebSocket(request, listener)
+        val socket = client.newWebSocket(
+            request,
+            listener
+        )
+
         if (!done.await(65, TimeUnit.SECONDS)) {
             socket.cancel()
-            throw IllegalStateException("Microsoft Edge TTS: таймаут ожидания аудио")
+            throw IllegalStateException(
+                "Microsoft Edge TTS: таймаут ожидания аудио"
+            )
         }
 
         failure.get()?.let { throw it }
-        val bytes = synchronized(output) { output.toByteArray() }
+
+        val bytes =
+            synchronized(output) {
+                output.toByteArray()
+            }
+
         if (bytes.size < 256) {
             throw IllegalStateException(
                 "Microsoft Edge TTS не вернул аудио (получено ${bytes.size} байт)"
             )
         }
-        AppDiagnostics.info(context, "Edge audio received: ${bytes.size} bytes")
+
+        AppDiagnostics.info(
+            context,
+            "Edge audio received: ${bytes.size} bytes"
+        )
         return bytes
     }
 
-    fun splitForApi(text: String, maxChars: Int = 3400): List<String> {
-        if (text.length <= maxChars) return listOf(text)
+    fun splitForApi(
+        text: String,
+        maxBytes: Int = MAX_TEXT_BYTES
+    ): List<String> {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return emptyList()
+        if (trimmed.toByteArray(Charsets.UTF_8).size <= maxBytes) {
+            return listOf(trimmed)
+        }
+
         val result = mutableListOf<String>()
         var cursor = 0
+
         while (cursor < text.length) {
-            var end = minOf(cursor + maxChars, text.length)
-            if (end < text.length) {
-                val sentence = text.lastIndexOfAny(
-                    charArrayOf('.', '!', '?', '\n'),
-                    end
-                )
-                val space = text.lastIndexOf(' ', end)
-                end = when {
-                    sentence > cursor + maxChars / 2 -> sentence + 1
-                    space > cursor + maxChars / 2 -> space + 1
-                    else -> end
-                }
+            while (
+                cursor < text.length &&
+                text[cursor].isWhitespace()
+            ) {
+                cursor++
             }
-            result += text.substring(cursor, end).trim()
+            if (cursor >= text.length) break
+
+            var end = cursor
+            var used = 0
+
+            while (end < text.length) {
+                val cp = Character.codePointAt(text, end)
+                val charCount = Character.charCount(cp)
+                val piece = String(Character.toChars(cp))
+                val bytes = piece.toByteArray(Charsets.UTF_8).size
+
+                if (used + bytes > maxBytes) break
+
+                used += bytes
+                end += charCount
+            }
+
+            if (end <= cursor) {
+                end = (cursor + 1).coerceAtMost(text.length)
+            }
+
+            if (end < text.length) {
+                val minPreferred =
+                    cursor + ((end - cursor) * 55 / 100)
+
+                val sentence =
+                    text.lastIndexOfAny(
+                        charArrayOf(
+                            '.',
+                            '!',
+                            '?',
+                            '\n'
+                        ),
+                        end - 1
+                    )
+
+                val whitespace =
+                    findWhitespaceBackward(
+                        text,
+                        end - 1,
+                        cursor
+                    )
+
+                val preferred =
+                    when {
+                        sentence >= minPreferred ->
+                            sentence + 1
+
+                        whitespace >= minPreferred ->
+                            whitespace + 1
+
+                        else ->
+                            end
+                    }
+
+                end = preferred
+            }
+
+            val chunk =
+                text.substring(
+                    cursor,
+                    end
+                ).trim()
+
+            if (chunk.isNotBlank()) {
+                result += chunk
+            }
+
             cursor = end
         }
-        return result.filter { it.isNotBlank() }
+
+        return result
+    }
+
+    private fun findWhitespaceBackward(
+        value: String,
+        from: Int,
+        min: Int
+    ): Int {
+        var i = from.coerceAtMost(value.lastIndex)
+        while (i >= min) {
+            if (value[i].isWhitespace()) {
+                return i
+            }
+            i--
+        }
+        return -1
+    }
+
+    private fun isRetryableNetwork(
+        error: Throwable
+    ): Boolean {
+        var current: Throwable? = error
+
+        while (current != null) {
+            val message =
+                current.message
+                    ?.lowercase(Locale.US)
+                    .orEmpty()
+
+            if (
+                message.contains("software caused connection abort") ||
+                message.contains("connection reset") ||
+                message.contains("broken pipe") ||
+                message.contains("timed out") ||
+                message.contains("timeout") ||
+                message.contains("unexpected end") ||
+                message.contains("connection abort")
+            ) {
+                return true
+            }
+
+            val name =
+                current.javaClass.simpleName
+
+            if (
+                name.contains("SocketException") ||
+                name.contains("EOFException")
+            ) {
+                return true
+            }
+
+            current = current.cause
+        }
+
+        return false
     }
 
     private fun ratePercent(speed: Float): String {
-        val percent = ((speed.coerceIn(0.5f, 2.0f) - 1f) * 100f)
-            .roundToInt()
-            .coerceIn(-50, 100)
-        return if (percent >= 0) "+$percent%" else "$percent%"
+        val percent =
+            (
+                (
+                    speed
+                        .coerceIn(0.5f, 2.0f) -
+                        1f
+                    ) *
+                    100f
+                )
+                .roundToInt()
+                .coerceIn(-50, 100)
+
+        return if (percent >= 0) {
+            "+$percent%"
+        } else {
+            "$percent%"
+        }
     }
 
     private fun cleanText(value: String): String =
@@ -260,8 +505,15 @@ object EdgeTtsClient {
             value.forEach { ch ->
                 val code = ch.code
                 append(
-                    if ((code in 0..8) || (code in 11..12) || (code in 14..31)) ' '
-                    else ch
+                    if (
+                        (code in 0..8) ||
+                        (code in 11..12) ||
+                        (code in 14..31)
+                    ) {
+                        ' '
+                    } else {
+                        ch
+                    }
                 )
             }
         }
@@ -276,24 +528,59 @@ object EdgeTtsClient {
 
     private fun generateSecMsGec(): String {
         var seconds =
-            System.currentTimeMillis() / 1000.0 + clockSkewSeconds + WIN_EPOCH
+            System.currentTimeMillis() /
+                1000.0 +
+                clockSkewSeconds +
+                WIN_EPOCH
+
         seconds -= seconds % 300.0
-        val ticks = seconds * 10_000_000.0
+
+        val ticks =
+            seconds * 10_000_000.0
+
         val raw =
-            String.format(Locale.US, "%.0f", ticks) + TRUSTED_CLIENT_TOKEN
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest(raw.toByteArray(Charsets.US_ASCII))
-        return digest.joinToString("") { "%02X".format(it) }
+            String.format(
+                Locale.US,
+                "%.0f",
+                ticks
+            ) +
+                TRUSTED_CLIENT_TOKEN
+
+        val digest =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(
+                    raw.toByteArray(
+                        Charsets.US_ASCII
+                    )
+                )
+
+        return digest.joinToString("") {
+            "%02X".format(it)
+        }
     }
 
-    private fun adjustClockSkew(serverDate: String): Boolean =
+    private fun adjustClockSkew(
+        serverDate: String
+    ): Boolean =
         try {
-            val server = ZonedDateTime.parse(
-                serverDate,
-                DateTimeFormatter.RFC_1123_DATE_TIME
-            ).toInstant().toEpochMilli() / 1000.0
-            val clientNow = System.currentTimeMillis() / 1000.0
-            clockSkewSeconds += server - clientNow
+            val server =
+                ZonedDateTime
+                    .parse(
+                        serverDate,
+                        DateTimeFormatter
+                            .RFC_1123_DATE_TIME
+                    )
+                    .toInstant()
+                    .toEpochMilli() /
+                    1000.0
+
+            val clientNow =
+                System.currentTimeMillis() /
+                    1000.0
+
+            clockSkewSeconds +=
+                server - clientNow
             true
         } catch (_: Throwable) {
             false
@@ -309,10 +596,16 @@ object EdgeTtsClient {
             .format(Instant.now())
 
     private fun randomHex(): String =
-        UUID.randomUUID().toString().replace("-", "")
+        UUID
+            .randomUUID()
+            .toString()
+            .replace("-", "")
 
     private class EdgeForbiddenException(
         val serverDate: String?,
         cause: Throwable?
-    ) : Exception("Edge HTTP 403", cause)
+    ) : Exception(
+        "Edge HTTP 403",
+        cause
+    )
 }
