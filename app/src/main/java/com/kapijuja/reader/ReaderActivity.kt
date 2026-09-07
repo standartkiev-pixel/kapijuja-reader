@@ -147,11 +147,12 @@ class ReaderActivity : Activity() {
         libraryId = intent.getStringExtra(EXTRA_LIBRARY_ID)
         if (libraryId != null) {
             val item = LibraryStore.item(this, libraryId!!)
-            title = item?.title ?: "Текст"
+            title = item?.title ?: t("Текст", "Tekst", "Text")
             source = item?.source.orEmpty()
             text = LibraryStore.text(this, libraryId!!)
         } else {
-            title = intent.getStringExtra(EXTRA_TITLE).orEmpty().ifBlank { "Текст" }
+            title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+                .ifBlank { t("Текст", "Tekst", "Text") }
             source = intent.getStringExtra(EXTRA_SOURCE).orEmpty()
             val path = intent.getStringExtra(EXTRA_DRAFT_PATH)
             text = path?.let { File(it).takeIf(File::exists)?.readText() }.orEmpty()
@@ -1710,7 +1711,7 @@ class ReaderActivity : Activity() {
         if (updated.isBlank()) {
             Toast.makeText(
                 this,
-                "Текст пустой",
+                t("Текст пустой", "Tekst jest pusty", "Text is empty"),
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -1754,7 +1755,7 @@ class ReaderActivity : Activity() {
 
         Toast.makeText(
             this,
-            "Текст сохранён",
+            t("Текст сохранён", "Tekst zapisany", "Text saved"),
             Toast.LENGTH_SHORT
         ).show()
     }
