@@ -32,16 +32,23 @@ import java.util.UUID
 class MainActivity : Activity() {
     private lateinit var libraryBox: LinearLayout
     private lateinit var loading: ProgressBar
+    private var libraryVisibleCount = LIBRARY_PAGE_SIZE
+    private var builtLanguage = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KapijujaUiTheme.applyWindow(this)
+        builtLanguage = UiText.language(this)
         buildScreen()
         maybeOfferBackgroundSetup()
     }
 
     override fun onResume() {
         super.onResume()
+        if (builtLanguage.isNotBlank() && builtLanguage != UiText.language(this)) {
+            recreate()
+            return
+        }
         if (::libraryBox.isInitialized) refreshLibrary()
     }
 
@@ -133,7 +140,11 @@ class MainActivity : Activity() {
         val items = LibraryStore.list(this)
         if (items.isEmpty()) {
             val empty = TextView(this).apply {
-                text = t("Текстов пока нет.\nНажмите +, чтобы открыть документ, вставить текст или ссылку.", "No texts yet.\nTap + to open a document, paste text or add a link.")
+                text = t(
+                    "Текстов пока нет.\nНажмите +, чтобы открыть документ, вставить текст или ссылку.",
+                    "Nie ma jeszcze tekstów.\nNaciśnij +, aby otworzyć dokument, wkleić tekst lub link.",
+                    "No texts yet.\nTap + to open a document, paste text or add a link."
+                )
                 textSize = 18f
                 gravity = Gravity.CENTER
                 setPadding(dp(20), dp(70), dp(20), dp(20))
@@ -143,7 +154,9 @@ class MainActivity : Activity() {
             return
         }
 
-        items.forEach { item ->
+        val shown = items.take(libraryVisibleCount)
+
+        shown.forEach { item ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(dp(16), dp(15), dp(16), dp(15))
@@ -151,45 +164,108 @@ class MainActivity : Activity() {
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { openLibraryItem(item.id) }
+                setOnLongClickListener {
+                    confirmDeleteLibraryItem(item)
+                    true
+                }
             }
-            val t = TextView(this).apply {
+            val titleView = TextView(this).apply {
                 text = item.title
                 textSize = 20f
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             }
-            KapijujaUiTheme.title(t)
-            card.addView(t)
+            KapijujaUiTheme.title(titleView)
+            card.addView(titleView)
 
             if (item.source.isNotBlank()) {
-                val s = TextView(this).apply {
+                val sourceView = TextView(this).apply {
                     text = item.source
                     textSize = 13f
                     maxLines = 1
                     setPadding(0, dp(6), 0, 0)
                 }
-                KapijujaUiTheme.secondary(s)
-                card.addView(s)
+                KapijujaUiTheme.secondary(sourceView)
+                card.addView(sourceView)
             }
 
-            val excerpt = LibraryStore.text(this, item.id)
-                .replace("\n", " ")
-                .trim()
-                .take(150)
-            val e = TextView(this).apply {
+            val excerpt = LibraryStore.excerpt(this, item.id)
+            val excerptView = TextView(this).apply {
                 text = excerpt
                 textSize = 15f
                 maxLines = 3
                 setPadding(0, dp(9), 0, 0)
             }
-            KapijujaUiTheme.secondary(e)
-            card.addView(e)
+            KapijujaUiTheme.secondary(excerptView)
+            card.addView(excerptView)
 
-            libraryBox.addView(card, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) })
+            val hint = TextView(this).apply {
+                text = t(
+                    "Долгое нажатие — удалить",
+                    "Przytrzymaj — usuń",
+                    "Long press — delete"
+                )
+                textSize = 11f
+                setPadding(0, dp(6), 0, 0)
+            }
+            KapijujaUiTheme.secondary(hint)
+            card.addView(hint)
+
+            libraryBox.addView(
+                card,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+            )
+        }
+
+        if (shown.size < items.size) {
+            val remaining = minOf(LIBRARY_PAGE_SIZE, items.size - shown.size)
+            val more = Button(this).apply {
+                text = t(
+                    "Показать ещё $remaining",
+                    "Pokaż kolejne $remaining",
+                    "Show $remaining more"
+                )
+                textSize = 16f
+                setOnClickListener {
+                    libraryVisibleCount += LIBRARY_PAGE_SIZE
+                    refreshLibrary()
+                }
+            }
+            KapijujaUiTheme.button(this, more)
+            libraryBox.addView(
+                more,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    dp(56)
+                ).apply { bottomMargin = dp(14) }
+            )
         }
     }
 
+    private fun confirmDeleteLibraryItem(item: LibraryItem) {
+        AlertDialog.Builder(this)
+            .setTitle(
+                t(
+                    "Удалить текст?",
+                    "Usunąć tekst?",
+                    "Delete text?"
+                )
+            )
+            .setMessage(item.title)
+            .setNegativeButton(
+                t("Отмена", "Anuluj", "Cancel"),
+                null
+            )
+            .setPositiveButton(
+                t("Удалить", "Usuń", "Delete")
+            ) { _, _ ->
+                LibraryStore.delete(this, item.id)
+                refreshLibrary()
+            }
+            .show()
+    }
     private fun showImportDialog() {
         val dialog = Dialog(this)
         val box = LinearLayout(this).apply {
@@ -254,12 +330,24 @@ class MainActivity : Activity() {
                 val doc = DocumentTextExtractor.extract(this, uri)
                 runOnUiThread {
                     loading.visibility = View.GONE
-                    openDraft(doc.title, "Документ", doc.text)
+                    openDraft(
+                        doc.title,
+                        t("Документ", "Dokument", "Document"),
+                        doc.text
+                    )
                 }
             } catch (t: Throwable) {
                 runOnUiThread {
                     loading.visibility = View.GONE
-                    Toast.makeText(this, t.message ?: "Не удалось прочитать документ", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this,
+                        t.message ?: t(
+                            "Не удалось прочитать документ",
+                            "Nie udało się odczytać dokumentu",
+                            "Could not read document"
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }.start()
@@ -294,9 +382,12 @@ class MainActivity : Activity() {
                 val text = textInput.text.toString().trim()
                 if (text.isBlank()) return@setOnClickListener
                 val title = titleInput.text.toString().trim()
-                    .ifBlank { text.lineSequence().firstOrNull()?.take(60).orEmpty().ifBlank { "Текст" } }
+                    .ifBlank {
+                        text.lineSequence().firstOrNull()?.take(60).orEmpty()
+                            .ifBlank { t("Текст", "Tekst", "Text") }
+                    }
                 dialog.dismiss()
-                openDraft(title, "Текст", text)
+                openDraft(title, t("Текст", "Tekst", "Text"), text)
             }
         }
         KapijujaUiTheme.button(this, open, primary = true)
@@ -347,9 +438,19 @@ class MainActivity : Activity() {
                 connection.instanceFollowRedirects = true
                 connection.setRequestProperty("User-Agent", "Mozilla/5.0 KapijujaReader/0.1")
                 val html = connection.inputStream.bufferedReader().use { it.readText() }
-                val fallback = Uri.parse(address).host ?: "Страница"
+                val fallback =
+                    Uri.parse(address).host
+                        ?: t("Страница", "Strona", "Page")
                 val page = HtmlExtractor.extract(html, fallback)
-                if (page.text.length < 20) error("На странице не найден читаемый текст")
+                if (page.text.length < 20) {
+                    error(
+                        t(
+                            "На странице не найден читаемый текст",
+                            "Na stronie nie znaleziono tekstu do odczytu",
+                            "No readable text was found on the page"
+                        )
+                    )
+                }
                 runOnUiThread {
                     loading.visibility = View.GONE
                     openDraft(page.title, address, page.text)
@@ -357,7 +458,15 @@ class MainActivity : Activity() {
             } catch (t: Throwable) {
                 runOnUiThread {
                     loading.visibility = View.GONE
-                    Toast.makeText(this, "Не удалось получить страницу: ${t.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this,
+                        t(
+                            "Не удалось получить страницу: ${t.message}",
+                            "Nie udało się pobrać strony: ${t.message}",
+                            "Could not load page: ${t.message}"
+                        ),
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
         }.start()
@@ -473,10 +582,14 @@ class MainActivity : Activity() {
 
     private fun t(ru: String, en: String) = UiText.get(this, ru, en)
 
+    private fun t(ru: String, pl: String, en: String) =
+        UiText.get(this, ru, pl, en)
+
     private fun dp(v: Int) = KapijujaUiTheme.dp(this, v)
 
     companion object {
         private const val REQ_DOCUMENT = 901
         private const val REQ_NOTIFICATIONS = 902
+        private const val LIBRARY_PAGE_SIZE = 80
     }
 }
