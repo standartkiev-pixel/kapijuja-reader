@@ -71,10 +71,31 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$dst"
           sha256sum "$dst"
 
-      - name: Upload APK
+      - name: Upload APK artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: kapijuja-reader-apk
           path: app/build/outputs/apk/debug/kapijuja-reader.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+
+      - name: Publish latest test APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/debug/kapijuja-reader.apk"
+          tag="kapijuja-reader-latest-test"
+          test -s "$apk"
+
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$apk#kapijuja-reader.apk" \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$apk#kapijuja-reader.apk" \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Kapijuja Reader latest test APK" \
+              --notes "Latest signed test APK. The Actions artifact step is kept as a best-effort mirror." \
+              --prerelease
+          fi
