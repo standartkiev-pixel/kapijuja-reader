@@ -244,6 +244,21 @@ object UiText {
             "Текст сохранён." -> "Tekst zapisany."
             "Текст сохранён" -> "Tekst zapisany"
             "Текст пустой" -> "Tekst jest pusty"
+            "Ключ хранится только в данных приложения на этом устройстве. GitHub Secret в APK не встраивается." ->
+                "Klucz jest przechowywany tylko w danych aplikacji na tym urządzeniu. GitHub Secret nie jest osadzany w APK."
+            "Инструкция голосу" -> "Instrukcja dla głosu"
+            "Инструкция голосу Google" -> "Instrukcja dla głosu Google"
+            "Для Azure используется отдельный Speech key и region. Если создать ресурс Free (F0), стандартные Neural-голоса можно тестировать в бесплатной квоте." ->
+                "Azure używa osobnego klucza Speech i regionu. W zasobie Free (F0) standardowe głosy Neural można testować w bezpłatnym limicie."
+            "Region — точный идентификатор из Azure Location/Region: только латинские буквы и цифры без пробелов. По умолчанию: switzerlandnorth." ->
+                "Region to dokładny identyfikator Azure Location/Region: tylko małe litery łacińskie i cyfry, bez spacji. Domyślnie: switzerlandnorth."
+            "Google Gemini TTS поддерживает русский и имеет бесплатный Developer API tier. API key создаётся в Google AI Studio. Внутри APK ключ не хранится." ->
+                "Google Gemini TTS obsługuje rosyjski i ma bezpłatny poziom Developer API. Klucz API tworzy się w Google AI Studio. Klucz nie jest przechowywany w APK."
+            "RHVoice — бесплатно, офлайн" -> "RHVoice — bezpłatny, offline"
+            "RHVoice — установить бесплатно" -> "RHVoice — zainstaluj bezpłatnie"
+            "Microsoft Edge — бесплатно" -> "Microsoft Edge — bezpłatny"
+            "Silero v5.5 — эксперимент" -> "Silero v5.5 — eksperyment"
+            "Microsoft Azure — нужен credential" -> "Microsoft Azure — wymagane dane dostępowe"
             else -> null
         }
 }
