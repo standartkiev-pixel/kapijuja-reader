@@ -506,7 +506,7 @@ class ReaderActivity : Activity() {
                             file.delete()
                             if (token != generationToken) return@setOnCompletionListener
                             if (index >= segments.lastIndex) {
-                                isPlaying = false
+                                this@ReaderActivity.isPlaying = false
                                 currentSegment = 0
                                 playPause.text = "Сначала"
                                 listenButton.text = "Слушать"
@@ -517,7 +517,7 @@ class ReaderActivity : Activity() {
                         setOnErrorListener { mp, _, _ ->
                             mp.release()
                             mediaPlayer = null
-                            isPlaying = false
+                            this@ReaderActivity.isPlaying = false
                             playPause.text = "Продолжить"
                             listenButton.text = "Слушать"
                             true
