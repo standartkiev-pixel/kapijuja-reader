@@ -47,9 +47,27 @@ object LibraryStore {
         val id = UUID.randomUUID().toString()
         File(dir(context), "$id.txt").writeText(text)
         val current = list(context).toMutableList()
+        current.removeAll { it.id == id }
         current.add(0, LibraryItem(id, title.ifBlank { "Без названия" }, source, System.currentTimeMillis()))
         writeIndex(context, current)
         return id
+    }
+
+    fun update(context: Context, id: String, title: String, source: String, text: String) {
+        File(dir(context), "$id.txt").writeText(text)
+        val current = list(context).toMutableList()
+        val old = current.firstOrNull { it.id == id }
+        current.removeAll { it.id == id }
+        current.add(
+            0,
+            LibraryItem(
+                id = id,
+                title = title.ifBlank { old?.title ?: "Без названия" },
+                source = source.ifBlank { old?.source.orEmpty() },
+                createdAt = old?.createdAt ?: System.currentTimeMillis()
+            )
+        )
+        writeIndex(context, current)
     }
 
     fun text(context: Context, id: String): String =

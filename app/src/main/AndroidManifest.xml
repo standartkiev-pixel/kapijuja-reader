@@ -9,6 +9,11 @@
         android:usesCleartextTraffic="true">
 
         <activity
+            android:name=".SettingsActivity"
+            android:screenOrientation="unspecified"
+            android:exported="false" />
+
+        <activity
             android:name=".ReaderActivity"
             android:screenOrientation="unspecified"
             android:exported="false" />
