@@ -624,7 +624,7 @@ class ReaderActivity : Activity() {
                     mainHandler.post {
                         currentSegment = index
                         isPlaying = true
-                        playPause.text = "Пауза"
+                        playPause.text = t("Пауза", "Pause")
                         listenButton.text = "Читается"
                         highlight(index)
                     }
@@ -660,7 +660,7 @@ class ReaderActivity : Activity() {
                         isPlaying = false
                         playPause.text = t("Продолжить", "Resume")
                         listenButton.text = "Слушать"
-                        resultText.text = "Ошибка Android TTS."
+                        resultText.text = t("Ошибка Android TTS.", "Android TTS error.")
                     }
                 }
             }
@@ -1569,12 +1569,13 @@ class ReaderActivity : Activity() {
         openAiRunAudioMillis / 60_000.0 * 0.013
 
     private fun pauseSpeech() {
+        val wasPlaying = isPlaying
         generationToken += 1
         tts?.stop()
         stopMediaOnly()
         clearCloudPrefetch()
         isPlaying = false
-        syncPlaybackNotification()
+        if (wasPlaying) syncPlaybackNotification()
 
         if (::playPause.isInitialized) {
             playPause.text = t("Продолжить", "Resume")
@@ -1802,7 +1803,7 @@ class ReaderActivity : Activity() {
                 .firstOrNull { it.id == voice }
                 ?.label
                 ?.take(20)
-                ?: voice.ifBlank { "Голос" }.take(20)
+                ?: voice.ifBlank { t("Голос", "Voice") }.take(20)
     }
 
     private class ExportCancelledException : RuntimeException()
