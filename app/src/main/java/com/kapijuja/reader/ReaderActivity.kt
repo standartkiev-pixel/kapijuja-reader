@@ -1593,27 +1593,40 @@ class ReaderActivity : Activity() {
     ): String =
         when (engine) {
             SettingsStore.ENGINE_OPENAI ->
-                "Чтение завершено • OpenAI ≈ €${
-                    String.format(
-                        Locale.US,
-                        "%.3f",
-                        estimatedOpenAiRunCost()
-                    )
-                }"
+                t(
+                    "Чтение завершено • OpenAI ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}",
+                    "Czytanie zakończone • OpenAI ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}",
+                    "Reading complete • OpenAI ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}"
+                )
 
             SettingsStore.ENGINE_EDGE ->
-                "Чтение завершено • Microsoft Edge: бесплатно"
+                t(
+                    "Чтение завершено • Microsoft Edge: бесплатно",
+                    "Czytanie zakończone • Microsoft Edge: bezpłatnie",
+                    "Reading complete • Microsoft Edge: free"
+                )
 
             SettingsStore.ENGINE_AZURE ->
-                "Чтение завершено • Azure Speech"
+                t(
+                    "Чтение завершено • Azure Speech",
+                    "Czytanie zakończone • Azure Speech",
+                    "Reading complete • Azure Speech"
+                )
 
             SettingsStore.ENGINE_GOOGLE ->
-                "Чтение завершено • Google Gemini TTS"
+                t(
+                    "Чтение завершено • Google Gemini TTS",
+                    "Czytanie zakończone • Google Gemini TTS",
+                    "Reading complete • Google Gemini TTS"
+                )
 
             else ->
-                "Чтение завершено."
+                t(
+                    "Чтение завершено.",
+                    "Czytanie zakończone.",
+                    "Reading complete."
+                )
         }
-
     private fun clearCloudPrefetch() {
         prefetchedCloudFiles
             .values
@@ -1650,13 +1663,17 @@ class ReaderActivity : Activity() {
             openAiRunAudioMillis > 0
         ) {
             resultText.text =
-                "OpenAI уже сгенерировано ≈ €${
+                t(
+                    "OpenAI уже сгенерировано ≈ €${
                     String.format(
                         Locale.US,
                         "%.3f",
                         estimatedOpenAiRunCost()
                     )
-                }"
+                }",
+                    "OpenAI już wygenerowano ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}",
+                    "OpenAI generated so far ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}"
+                )
         }
     }
 
