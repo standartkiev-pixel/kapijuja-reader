@@ -1,11 +1,17 @@
 package com.kapijuja.reader
 
+import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Dialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -31,6 +37,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         KapijujaUiTheme.applyWindow(this)
         buildScreen()
+        maybeOfferBackgroundSetup()
     }
 
     override fun onResume() {
@@ -63,7 +70,7 @@ class MainActivity : Activity() {
         topRow.addView(title, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         val settings = Button(this).apply {
-            text = "⚙ Настройки"
+            text = t("⚙ Настройки", "⚙ Settings")
             textSize = 14f
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
@@ -75,7 +82,7 @@ class MainActivity : Activity() {
         column.addView(topRow)
 
         val subtitle = TextView(this).apply {
-            text = "Библиотека"
+            text = t("Библиотека", "Library")
             textSize = 17f
             setPadding(0, dp(6), 0, dp(18))
         }
@@ -126,7 +133,7 @@ class MainActivity : Activity() {
         val items = LibraryStore.list(this)
         if (items.isEmpty()) {
             val empty = TextView(this).apply {
-                text = "Текстов пока нет.\nНажмите +, чтобы открыть документ, вставить текст или ссылку."
+                text = t("Текстов пока нет.\nНажмите +, чтобы открыть документ, вставить текст или ссылку.", "No texts yet.\nTap + to open a document, paste text or add a link.")
                 textSize = 18f
                 gravity = Gravity.CENTER
                 setPadding(dp(20), dp(70), dp(20), dp(20))
@@ -192,7 +199,7 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "Добавить текст"
+            text = t("Добавить текст", "Add text")
             textSize = 23f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setPadding(dp(4), 0, 0, dp(14))
@@ -215,9 +222,9 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = dp(12) })
         }
 
-        option("Открыть документ") { chooseDocument() }
-        option("Ввести текст") { showManualTextDialog() }
-        option("Вставить ссылку") { showLinkDialog() }
+        option(t("Открыть документ", "Open document")) { chooseDocument() }
+        option(t("Ввести текст", "Enter text")) { showManualTextDialog() }
+        option(t("Вставить ссылку", "Paste link")) { showLinkDialog() }
 
         dialog.setContentView(box)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -260,17 +267,17 @@ class MainActivity : Activity() {
 
     private fun showManualTextDialog() {
         val dialog = Dialog(this)
-        val box = dialogBox("Ввести текст")
+        val box = dialogBox(t("Ввести текст", "Enter text"))
 
         val titleInput = EditText(this).apply {
-            hint = "Название (необязательно)"
+            hint = t("Название (необязательно)", "Title (optional)")
             textSize = 17f
         }
         KapijujaUiTheme.input(this, titleInput)
         box.addView(titleInput, matchWrap(dp(10)))
 
         val textInput = EditText(this).apply {
-            hint = "Вставьте или напишите текст"
+            hint = t("Вставьте или напишите текст", "Paste or type text")
             textSize = 18f
             minLines = 9
             gravity = Gravity.TOP
@@ -281,7 +288,7 @@ class MainActivity : Activity() {
         ).apply { bottomMargin = dp(14) })
 
         val open = Button(this).apply {
-            text = "Открыть"
+            text = t("Открыть", "Open")
             textSize = 18f
             setOnClickListener {
                 val text = textInput.text.toString().trim()
@@ -301,7 +308,7 @@ class MainActivity : Activity() {
 
     private fun showLinkDialog() {
         val dialog = Dialog(this)
-        val box = dialogBox("Вставить ссылку")
+        val box = dialogBox(t("Вставить ссылку", "Paste link"))
         val input = EditText(this).apply {
             hint = "https://..."
             textSize = 17f
@@ -311,7 +318,7 @@ class MainActivity : Activity() {
         box.addView(input, matchWrap(dp(14)))
 
         val open = Button(this).apply {
-            text = "Загрузить текст"
+            text = t("Загрузить текст", "Load text")
             textSize = 18f
             setOnClickListener {
                 var address = input.text.toString().trim()
@@ -404,9 +411,72 @@ class MainActivity : Activity() {
         ViewGroup.LayoutParams.WRAP_CONTENT
     ).apply { bottomMargin = bottom }
 
+    private fun maybeOfferBackgroundSetup() {
+        val prefs = getSharedPreferences("kapijuja_reader_runtime", MODE_PRIVATE)
+        if (prefs.getBoolean("background_setup_offered", false)) return
+        prefs.edit().putBoolean("background_setup_offered", true).apply()
+
+        AlertDialog.Builder(this)
+            .setTitle(t("Фоновое чтение", "Background reading"))
+            .setMessage(
+                t(
+                    "Чтобы чтение не замораживалось при выключенном экране, разрешите уведомления и снимите ограничение батареи для Kapijuja Reader.",
+                    "To keep reading alive with the screen off, allow notifications and remove battery restrictions for Kapijuja Reader."
+                )
+            )
+            .setNegativeButton(t("Позже", "Later"), null)
+            .setPositiveButton(t("Настроить", "Set up")) { _, _ ->
+                requestBackgroundPermissions()
+            }
+            .show()
+    }
+
+    private fun requestBackgroundPermissions() {
+        if (
+            Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) !=
+                PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQ_NOTIFICATIONS
+            )
+        } else {
+            requestBatteryExemption()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQ_NOTIFICATIONS) requestBatteryExemption()
+    }
+
+    private fun requestBatteryExemption() {
+        val power = getSystemService(PowerManager::class.java)
+        if (power.isIgnoringBatteryOptimizations(packageName)) return
+        try {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            )
+        } catch (_: Throwable) {
+            startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            )
+        }
+    }
+
+    private fun t(ru: String, en: String) = UiText.get(this, ru, en)
+
     private fun dp(v: Int) = KapijujaUiTheme.dp(this, v)
 
     companion object {
         private const val REQ_DOCUMENT = 901
+        private const val REQ_NOTIFICATIONS = 902
     }
 }
