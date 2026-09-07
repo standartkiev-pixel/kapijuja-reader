@@ -105,7 +105,7 @@ class ReaderPlaybackService : Service() {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(currentTitle)
             .setContentText(
-                if (playing) text("Читается", "Reading") else text("Пауза", "Paused")
+                if (playing) text("Читается", "Czytanie", "Reading") else text("Пауза", "Pauza", "Paused")
             )
             .setOnlyAlertOnce(true)
             .setOngoing(playing)
@@ -114,12 +114,12 @@ class ReaderPlaybackService : Service() {
             .setContentIntent(contentPending)
             .addAction(
                 if (playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                if (playing) text("Пауза", "Pause") else text("Продолжить", "Resume"),
+                if (playing) text("Пауза", "Pauza", "Pause") else text("Продолжить", "Wznów", "Resume"),
                 togglePending
             )
             .addAction(
                 android.R.drawable.ic_menu_close_clear_cancel,
-                text("Стоп", "Stop"),
+                text("Стоп", "Stop", "Stop"),
                 stopPending
             )
             .setStyle(
@@ -143,6 +143,9 @@ class ReaderPlaybackService : Service() {
     }
 
     private fun text(ru: String, en: String) = UiText.get(this, ru, en)
+
+    private fun text(ru: String, pl: String, en: String) =
+        UiText.get(this, ru, pl, en)
 
     override fun onDestroy() {
         if (::mediaSession.isInitialized) mediaSession.release()
