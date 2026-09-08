@@ -526,13 +526,7 @@ class ReaderActivity : Activity() {
             SettingsStore.ENGINE_OPENAI -> startOpenAiWithGuard()
             SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
             SettingsStore.ENGINE_SILERO ->
-                showUnavailable(
-                    t(
-                        "Silero пока не встроен в основной APK. Движок оставлен как отдельный эксперимент.",
-                        "Silero nie jest wbudowany w główny APK. Silnik pozostaje osobnym eksperymentem.",
-                        "Silero is not bundled in the base APK. It remains a separate experiment."
-                    )
-                )
+                startSileroFrom(currentSegment)
             SettingsStore.ENGINE_AZURE ->
                 startAzureFrom(currentSegment)
             SettingsStore.ENGINE_GOOGLE ->
@@ -806,6 +800,13 @@ class ReaderActivity : Activity() {
         )
     }
 
+    private fun startSileroFrom(index: Int) {
+        startCloudFrom(
+            index,
+            SettingsStore.ENGINE_SILERO
+        )
+    }
+
     private fun startAzureFrom(index: Int) {
         val key = SettingsStore.azureSpeechKey(this)
         val region = SettingsStore.azureRegion(this)
@@ -895,6 +896,12 @@ class ReaderActivity : Activity() {
                         "Google Gemini: буферизация…",
                         "Google Gemini: buforowanie…",
                         "Google Gemini: buffering…"
+                    )
+                SettingsStore.ENGINE_SILERO ->
+                    t(
+                        "Silero v5.5: подготовка локального голоса…",
+                        "Silero v5.5: przygotowanie lokalnego głosu…",
+                        "Silero v5.5: preparing local voice…"
                     )
                 else ->
                     t(
@@ -1134,6 +1141,8 @@ class ReaderActivity : Activity() {
                             "ru-RU-DmitryNeural"
                         SettingsStore.ENGINE_GOOGLE ->
                             "Gacrux"
+                        SettingsStore.ENGINE_SILERO ->
+                            "eugene"
                         else ->
                             "cedar"
                     }
@@ -1202,6 +1211,14 @@ class ReaderActivity : Activity() {
                             this@ReaderActivity
                     )
 
+            SettingsStore.ENGINE_SILERO ->
+                SileroRuntime.synthesizeWav(
+                    context = this@ReaderActivity,
+                    text = text,
+                    speaker = voice,
+                    speed = speechRate
+                )
+
             else ->
                 error(
                     "Unsupported cloud engine: $engine"
@@ -1223,14 +1240,16 @@ class ReaderActivity : Activity() {
                     "azure"
                 SettingsStore.ENGINE_GOOGLE ->
                     "google"
+                SettingsStore.ENGINE_SILERO ->
+                    "silero"
                 else ->
                     "openai"
             }
 
         val extension =
             if (
-                engine ==
-                SettingsStore.ENGINE_GOOGLE
+                engine == SettingsStore.ENGINE_GOOGLE ||
+                engine == SettingsStore.ENGINE_SILERO
             ) {
                 "wav"
             } else {
@@ -1394,6 +1413,8 @@ class ReaderActivity : Activity() {
                         "Azure Speech • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
                     SettingsStore.ENGINE_GOOGLE ->
                         "Google Gemini • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
+                    SettingsStore.ENGINE_SILERO ->
+                        "Silero v5.5 • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
                     else ->
                         "TTS"
                 }
@@ -1630,6 +1651,13 @@ class ReaderActivity : Activity() {
                     "Reading complete • Google Gemini TTS"
                 )
 
+            SettingsStore.ENGINE_SILERO ->
+                t(
+                    "Чтение завершено • Silero v5.5 локально",
+                    "Czytanie zakończone • Silero v5.5 lokalnie",
+                    "Reading complete • Silero v5.5 local"
+                )
+
             else ->
                 t(
                     "Чтение завершено.",
@@ -1841,6 +1869,8 @@ class ReaderActivity : Activity() {
                     startAzureFrom(currentSegment)
                 engine == SettingsStore.ENGINE_GOOGLE ->
                     startGoogleFrom(currentSegment)
+                engine == SettingsStore.ENGINE_SILERO ->
+                    startSileroFrom(currentSegment)
                 engine.startsWith("android:") ->
                     startAndroidTts()
             }
@@ -1882,6 +1912,7 @@ class ReaderActivity : Activity() {
                     )
                 } else if (
                     engine == SettingsStore.ENGINE_GOOGLE ||
+                    engine == SettingsStore.ENGINE_SILERO ||
                     engine.startsWith("android:")
                 ) {
                     t("Сохранить WAV", "Zapisz WAV", "Save WAV")
@@ -1891,8 +1922,14 @@ class ReaderActivity : Activity() {
         }
 
         val voice = SettingsStore.voice(this)
+        val voices =
+            if (engine == SettingsStore.ENGINE_SILERO) {
+                SileroRuntime.voiceChoices(this)
+            } else {
+                VoiceCatalog.staticVoices(engine)
+            }
         voiceButton.text =
-            VoiceCatalog.staticVoices(engine)
+            voices
                 .firstOrNull { it.id == voice }
                 ?.label
                 ?.take(20)
