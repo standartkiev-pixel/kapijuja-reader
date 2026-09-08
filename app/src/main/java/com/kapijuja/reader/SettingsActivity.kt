@@ -580,9 +580,7 @@ class SettingsActivity : Activity() {
         dynamic += SettingsStore.ENGINE_GOOGLE to
             "Google Gemini 2.5 Flash TTS"
 
-        val notReady = setOf(
-            SettingsStore.ENGINE_SILERO
-        )
+        val notReady = emptySet<String>()
 
         AlertDialog.Builder(this)
             .setTitle(t("Выберите движок", "Choose engine"))
@@ -593,31 +591,6 @@ class SettingsActivity : Activity() {
                     RhVoiceHelper.showInstallDialog(
                         this@SettingsActivity
                     )
-                    return@setItems
-                }
-
-                if (id in notReady) {
-                    val message = when (id) {
-                        SettingsStore.ENGINE_SILERO ->
-                            t(
-                                "Silero v5.5 пока не активирован в основном APK: Android PyTorch Lite runtime сам занимает около 72 МБ, а v5.5 распространяется как PyTorch package, не как готовый Android-модуль. Нужна отдельная адаптация модели, иначе мы просто раздуем APK без рабочего движка.",
-                                "Silero v5.5 nie jest jeszcze aktywny w głównym APK: sam Android PyTorch Lite zajmuje około 72 MB, a v5.5 jest dystrybuowany jako pakiet PyTorch, a nie gotowy moduł Android. Model wymaga osobnej adaptacji, inaczej tylko powiększymy APK bez działającego silnika.",
-                                "Silero v5.5 is not enabled in the base APK yet: Android PyTorch Lite alone is about 72 MB, and v5.5 is distributed as a PyTorch package rather than a ready Android module. The model needs separate adaptation; otherwise the APK would become huge without a working engine."
-                            )
-                        SettingsStore.ENGINE_AZURE ->
-                            t(
-                                "Azure требует Speech key и region.",
-                                "Azure wymaga klucza Speech i regionu.",
-                                "Azure requires a Speech key and region."
-                            )
-                        else ->
-                            t("Этот движок пока не активен.", "This engine is not active yet.")
-                    }
-                    AlertDialog.Builder(this)
-                        .setTitle(t("Движок пока не активен", "Engine not active yet"))
-                        .setMessage(message)
-                        .setPositiveButton("OK", null)
-                        .show()
                     return@setItems
                 }
 
@@ -641,6 +614,27 @@ class SettingsActivity : Activity() {
                         SettingsStore.RHVOICE_PACKAGE,
                         SettingsStore.ENGINE_RHVOICE
                     )
+                }
+
+                if (id == SettingsStore.ENGINE_SILERO) {
+                    val voices = SileroRuntime.voiceChoices(this)
+                    if (voices.isNotEmpty()) {
+                        val current = SettingsStore.voice(this, id)
+                        if (voices.none { it.id == current }) {
+                            SettingsStore.setVoice(
+                                this,
+                                id,
+                                voices.first().id
+                            )
+                        }
+                        voiceButton.text = currentVoiceLabel()
+                    }
+                    statusText.text =
+                        t(
+                            "Silero v5.5 подключён. Первый запуск голоса загрузит PyTorch-модель в память и может занять несколько секунд.",
+                            "Silero v5.5 jest podłączony. Pierwsze uruchomienie głosu załaduje model PyTorch do pamięci i może potrwać kilka sekund.",
+                            "Silero v5.5 is connected. The first voice run loads the PyTorch model into memory and may take a few seconds."
+                        )
                 }
 
                 if (
@@ -691,7 +685,12 @@ class SettingsActivity : Activity() {
             return
         }
 
-        val voices = VoiceCatalog.staticVoices(engine)
+        val voices =
+            if (engine == SettingsStore.ENGINE_SILERO) {
+                SileroRuntime.voiceChoices(this)
+            } else {
+                VoiceCatalog.staticVoices(engine)
+            }
         if (voices.isEmpty()) {
             Toast.makeText(this, t("Для этого движка список голосов пока недоступен", "No voice list is available for this engine yet"), Toast.LENGTH_SHORT).show()
             return
@@ -995,9 +994,9 @@ class SettingsActivity : Activity() {
 
                 engine == SettingsStore.ENGINE_SILERO ->
                     t(
-                        "Silero v5.5 оставлен как экспериментальный движок; runtime не встроен в основной APK из-за большого размера и необходимости отдельной адаптации модели.",
-                        "Silero v5.5 pozostaje silnikiem eksperymentalnym; runtime nie jest dołączony do głównego APK ze względu na duży rozmiar i konieczność osobnej adaptacji modelu.",
-                        "Silero v5.5 remains experimental; its runtime is not bundled into the base APK because of size and the need for separate model adaptation."
+                        "Silero v5.5 работает локально через встроенный PyTorch Android runtime. Голоса и их ID читаются из metadata, извлечённых из официальной модели: ${SileroRuntime.modelDescription(this)}. В этой первой Android-версии отдельный Python accentor Silero не встроен, поэтому ударения могут быть хуже, чем в полном Python package.",
+                        "Silero v5.5 działa lokalnie przez wbudowany PyTorch Android runtime. Głosy i ich identyfikatory są czytane z metadanych wyciągniętych z oficjalnego modelu: ${SileroRuntime.modelDescription(this)}. W tej pierwszej wersji Android osobny accentor Pythona Silero nie jest dołączony, więc akcentowanie może być gorsze niż w pełnym pakiecie Python.",
+                        "Silero v5.5 runs locally through the bundled PyTorch Android runtime. Voice names and IDs are read from metadata extracted from the official model: ${SileroRuntime.modelDescription(this)}. This first Android adapter does not bundle Silero's separate Python accentor, so stress placement may be worse than in the full Python package."
                     )
 
                 engine == SettingsStore.ENGINE_EDGE ->
@@ -1042,7 +1041,13 @@ class SettingsActivity : Activity() {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
         if (id.isBlank()) return t("Выбрать голос", "Choose voice")
-        return VoiceCatalog.staticVoices(engine).firstOrNull { it.id == id }?.label ?: id
+        val voices =
+            if (engine == SettingsStore.ENGINE_SILERO) {
+                SileroRuntime.voiceChoices(this)
+            } else {
+                VoiceCatalog.staticVoices(engine)
+            }
+        return voices.firstOrNull { it.id == id }?.label ?: id
     }
 
     private fun engineLabel(id: String): String = when {
