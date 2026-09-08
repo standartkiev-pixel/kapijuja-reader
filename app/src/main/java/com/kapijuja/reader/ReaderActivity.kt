@@ -106,10 +106,19 @@ class ReaderActivity : Activity() {
         }
     }
 
+    private val exportController = object : ExportBridge.Controller {
+        override fun cancelExportFromNotification() {
+            mainHandler.post {
+                cancelAudioExport()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         KapijujaUiTheme.applyWindow(this)
         PlaybackBridge.controller = playbackController
+        ExportBridge.controller = exportController
         builtLanguage = UiText.language(this)
         loadInput()
         segments = segmentText(text)
@@ -1909,6 +1918,7 @@ class ReaderActivity : Activity() {
                 "Creating $format: 0%"
             )
         resultText.text = ""
+        startExportForegroundService(format)
     }
 
     private fun restoreAudioExportButton() {
@@ -1916,6 +1926,7 @@ class ReaderActivity : Activity() {
         exportThread = null
         saveAudioButton.isEnabled = true
         updateEngineLabels()
+        stopExportForegroundService()
     }
 
     private fun cancelAudioExport() {
@@ -1933,6 +1944,52 @@ class ReaderActivity : Activity() {
         tts?.stop()
         ttsExportLatches.values.forEach { it.countDown() }
         exportThread?.interrupt()
+    }
+
+    private fun startExportForegroundService(format: String) {
+        try {
+            startForegroundService(
+                Intent(this, ReaderExportService::class.java).apply {
+                    action = ReaderExportService.ACTION_START
+                    putExtra(ReaderExportService.EXTRA_FORMAT, format)
+                    putExtra(ReaderExportService.EXTRA_PERCENT, 0)
+                }
+            )
+        } catch (error: Throwable) {
+            AppDiagnostics.error(
+                this,
+                "Could not start audio export foreground service",
+                error
+            )
+        }
+    }
+
+    private fun updateExportForegroundService(percent: Int) {
+        if (!exportInProgress) return
+        try {
+            startService(
+                Intent(this, ReaderExportService::class.java).apply {
+                    action = ReaderExportService.ACTION_PROGRESS
+                    putExtra(ReaderExportService.EXTRA_FORMAT, currentExportFormat)
+                    putExtra(
+                        ReaderExportService.EXTRA_PERCENT,
+                        percent.coerceIn(0, 100)
+                    )
+                }
+            )
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun stopExportForegroundService() {
+        try {
+            startService(
+                Intent(this, ReaderExportService::class.java).apply {
+                    action = ReaderExportService.ACTION_STOP
+                }
+            )
+        } catch (_: Throwable) {
+        }
     }
 
     private fun checkExportCancelled() {
@@ -2889,6 +2946,12 @@ class ReaderActivity : Activity() {
         stopPlaybackNotification()
         if (PlaybackBridge.controller === playbackController) {
             PlaybackBridge.controller = null
+        }
+        if (ExportBridge.controller === exportController) {
+            ExportBridge.controller = null
+        }
+        if (!exportInProgress) {
+            stopExportForegroundService()
         }
         super.onDestroy()
     }
