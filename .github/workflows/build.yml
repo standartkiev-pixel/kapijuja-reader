@@ -57,114 +57,22 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: TEMP prepare Silero v5.5 Android model
+      - name: Bundle Silero v5.5 Android model assets
         shell: bash
         run: |
           set -euo pipefail
-          tag="kapijuja-silero-v5_5-android-v1"
-          work="/tmp/silero-android"
-          mkdir -p "$work"
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/kapijuja-silero-v5_5-android-v1"
+          dir="app/src/main/assets/silero"
+          mkdir -p "$dir"
 
-          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "Silero Android model release already exists; skip extraction."
-            exit 0
-          fi
+          curl -L --fail --retry 3             -o "$dir/silero-v5_5-tts-jit.pt"             "$base/silero-v5_5-tts-jit.pt"
+          curl -L --fail --retry 3             -o "$dir/silero-v5_5-metadata.json"             "$base/silero-v5_5-metadata.json"
+          curl -L --fail --retry 3             -o "$dir/LICENSE-SILERO.txt"             "$base/LICENSE-SILERO.txt"
+          curl -L --fail --retry 3             -o "$dir/README-SILERO-ANDROID.txt"             "$base/README-SILERO-ANDROID.txt"
 
-          python3 -m pip install --quiet --upgrade pip
-          python3 -m pip install --quiet torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-          python3 -m pip install --quiet numpy==1.26.4
-
-          curl -L --fail --retry 3             -o "$work/v5_5_ru.pt"             https://models.silero.ai/models/tts/ru/v5_5_ru.pt
-
-          python3 - <<'PY'
-          import json, os, re, struct, torch, wave
-
-          work="/tmp/silero-android"
-          src=os.path.join(work,"v5_5_ru.pt")
-          imp=torch.package.PackageImporter(src)
-          wrapper=imp.load_pickle("tts_models","model")
-          pack=wrapper.packages[0]
-          inner=pack.models[0]
-
-          model_path=os.path.join(work,"silero-v5_5-tts-jit.pt")
-          inner.save(model_path)
-
-          speakers=list(wrapper.speakers)
-          speaker_to_id=dict(pack.speaker_to_ids[0])
-          symbols=str(pack.symbols)
-          symbol_to_id={str(k):int(v) for k,v in dict(pack.symbol_to_id).items()}
-
-          metadata={
-              "model_id":"v5_5_ru",
-              "source":"https://models.silero.ai/models/tts/ru/v5_5_ru.pt",
-              "upstream":"https://github.com/snakers4/silero-models",
-              "license":"CC BY-NC-SA 4.0",
-              "sample_rates":[8000,24000,48000],
-              "default_sample_rate":48000,
-              "speakers":speakers,
-              "speaker_to_id":speaker_to_id,
-              "symbols":symbols,
-              "symbol_to_id":symbol_to_id,
-              "android_adapter":"Kapijuja Reader v1; inner TorchScript model extracted unchanged; Android-side text preprocessing; accentor not bundled in this first experimental adapter"
-          }
-          with open(os.path.join(work,"silero-v5_5-metadata.json"),"w",encoding="utf-8") as f:
-              json.dump(metadata,f,ensure_ascii=False,indent=2)
-
-          # Smoke test the exact Android-side adapter path without the Python accentor.
-          text="Привет. Это тест голоса Евгений."
-          text=text.lower().replace("—","–").replace("‑","-")
-          allowed=set(symbols[3:]+"^")
-          text="".join(ch for ch in text if ch in allowed)
-          text=re.sub(r"\s+"," ",text).strip()
-          seq_text="|"+text+"~"
-          ids=[symbol_to_id[ch] for ch in seq_text if ch in symbol_to_id]
-          sequence=torch.tensor(ids,dtype=torch.long).unsqueeze(0)
-          speaker_ids=torch.tensor([speaker_to_id["eugene"]],dtype=torch.long)
-          rates=torch.ones((1,len(ids)),dtype=torch.float32)
-          pitch=torch.ones((1,len(ids)),dtype=torch.float32)
-
-          with torch.no_grad():
-              out,_=inner(
-                  sequence=sequence,
-                  speaker_ids=speaker_ids,
-                  sr=48000,
-                  symb_durs={},
-                  durs_rate=rates,
-                  pitch_coefs=pitch,
-                  device="cpu"
-              )
-          audio=out.detach().cpu()[0].clamp(-1,1)
-          pcm=(audio*32767).to(torch.int16).numpy().tobytes()
-          wav_path=os.path.join(work,"silero-v5_5-smoke-eugene.wav")
-          with wave.open(wav_path,"wb") as w:
-              w.setnchannels(1)
-              w.setsampwidth(2)
-              w.setframerate(48000)
-              w.writeframes(pcm)
-
-          print("EXTRACTED_MODEL_BYTES",os.path.getsize(model_path))
-          print("SPEAKERS",speakers)
-          print("SMOKE_SECONDS",len(pcm)/2/48000)
-          PY
-
-          curl -L --fail --retry 3             -o "$work/LICENSE-SILERO.txt"             https://raw.githubusercontent.com/snakers4/silero-models/master/LICENSE
-
-          cat > "$work/README-SILERO-ANDROID.txt" <<'TXT'
-          Silero v5.5 Russian Android adapter for Kapijuja Reader.
-
-          Upstream: https://github.com/snakers4/silero-models
-          Original model: https://models.silero.ai/models/tts/ru/v5_5_ru.pt
-          Upstream license: CC BY-NC-SA 4.0.
-
-          The released .pt file is the inner TorchScript TTS module extracted from the
-          official v5_5_ru torch.package without changing its weights. The companion
-          JSON contains the speaker names and token/speaker mappings read from that
-          same official package.
-
-          This first Android adapter does not bundle the Python Silero accentor.
-          TXT
-
-          gh release create "$tag"             "$work/silero-v5_5-tts-jit.pt#silero-v5_5-tts-jit.pt"             "$work/silero-v5_5-metadata.json#silero-v5_5-metadata.json"             "$work/LICENSE-SILERO.txt#LICENSE-SILERO.txt"             "$work/README-SILERO-ANDROID.txt#README-SILERO-ANDROID.txt"             --repo "$GITHUB_REPOSITORY"             --title "Silero v5.5 Android model assets"             --notes "Experimental non-commercial Silero v5.5 Russian adapter assets for Kapijuja Reader. Upstream model by Silero Team; CC BY-NC-SA 4.0. See bundled license and README."             --prerelease
+          test -s "$dir/silero-v5_5-tts-jit.pt"
+          test -s "$dir/silero-v5_5-metadata.json"
+          echo "Bundled Silero model bytes: $(stat -c%s "$dir/silero-v5_5-tts-jit.pt")"
 
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
