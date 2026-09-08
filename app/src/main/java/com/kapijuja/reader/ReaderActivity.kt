@@ -2127,6 +2127,7 @@ class ReaderActivity : Activity() {
                     val percent = ((index + 1) * 90 / chunks.size).coerceIn(0, 90)
                     mainHandler.post {
                         exportProgress.progress = percent
+                        updateExportForegroundService(percent)
                         progressText.text =
                             t(
                                 "Создание WAV: ${index + 1}/${chunks.size} • $percent%",
@@ -2563,6 +2564,7 @@ class ReaderActivity : Activity() {
                             mainHandler.post {
                                 exportProgress.progress =
                                     percent
+                                updateExportForegroundService(percent)
                                 progressText.text =
                                     t(
                                         "Создание MP3: ${index + 1}/${chunks.size} • $percent%",
@@ -2578,6 +2580,7 @@ class ReaderActivity : Activity() {
 
                 mainHandler.post {
                     exportProgress.progress = 100
+                    updateExportForegroundService(100)
                     progressText.text =
                         t("MP3 полностью записан • 100%", "MP3 zapisany • 100%", "MP3 complete • 100%")
                     listenButton.text = "Слушать"
@@ -2744,6 +2747,7 @@ class ReaderActivity : Activity() {
                 checkExportCancelled()
                 mainHandler.post {
                     exportProgress.progress = 100
+                    updateExportForegroundService(100)
                     progressText.text =
                         t(
                             "WAV полностью записан • 100%",
