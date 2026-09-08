@@ -57,61 +57,57 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: TEMP probe Silero runtime/model interfaces
+      - name: TEMP probe Silero CIS package metadata
         shell: bash
         run: |
           set -euo pipefail
           python3 -m pip install --quiet --upgrade pip
           python3 -m pip install --quiet torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
           mkdir -p /tmp/silero-probe
-          curl -L --fail --retry 3 -o /tmp/silero-probe/cis.jit https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.jit
-          curl -L --fail --retry 3 -o /tmp/silero-probe/v5_5_ru.pt https://models.silero.ai/models/tts/ru/v5_5_ru.pt
+          curl -L --fail --retry 3 -o /tmp/silero-probe/cis.pt https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.pt
           python3 - <<'PY'
-          import os, torch, traceback
-          print("TORCH", torch.__version__)
-          for p in ["/tmp/silero-probe/cis.jit", "/tmp/silero-probe/v5_5_ru.pt"]:
-              print("FILE", p, os.path.getsize(p))
-
-          print("\n=== CIS JIT ===")
-          m = torch.jit.load("/tmp/silero-probe/cis.jit", map_location="cpu")
-          print("TYPE", type(m))
-          print("METHODS", m._c._method_names())
-          for name in m._c._method_names():
+          import os, torch, inspect, json, traceback
+          p="/tmp/silero-probe/cis.pt"
+          print("TORCH", torch.__version__, "FILE", os.path.getsize(p))
+          imp=torch.package.PackageImporter(p)
+          model=imp.load_pickle("tts_models","model")
+          print("MODEL_TYPE",type(model))
+          print("MODEL_DICT_KEYS",sorted(model.__dict__.keys()))
+          for attr in ["speakers","symbols","speaker_to_package","sample_rate","sample_rates","languages","language_to_id","lang_to_id"]:
               try:
-                  print("SCHEMA", name, m._c._get_method(name).schema)
+                  v=getattr(model,attr)
+                  print("MODEL_ATTR",attr,repr(v)[:30000])
               except Exception as e:
-                  print("SCHEMA_ERR", name, repr(e))
-          for attr in ["speakers", "sample_rates", "language", "model_id"]:
-              try:
-                  v=getattr(m, attr)
-                  print("ATTR", attr, type(v), v)
-              except Exception as e:
-                  print("ATTR_ERR", attr, repr(e))
+                  print("MODEL_ATTR_ERR",attr,repr(e))
+          packs=getattr(model,"packages",[])
+          print("PACK_COUNT",len(packs))
+          for i,pack in enumerate(packs[:3]):
+              print("PACK",i,"TYPE",type(pack))
+              print("PACK_KEYS",sorted(getattr(pack,"__dict__",{}).keys()))
+              for attr in ["speakers","symbols","speaker_to_id","speaker_id_map","languages","language_to_id","lang_to_id","sample_rate","sample_rates","model"]:
+                  try:
+                      v=getattr(pack,attr)
+                      if attr=="model":
+                          print("PACK_ATTR",i,attr,type(v),getattr(v,"_c",None)._method_names() if hasattr(getattr(v,"_c",None),"_method_names") else "")
+                      else:
+                          print("PACK_ATTR",i,attr,repr(v)[:30000])
+                  except Exception as e:
+                      print("PACK_ATTR_ERR",i,attr,repr(e))
           try:
-              print("CODE_BEGIN")
-              print(m.code[:20000])
-              print("CODE_END")
+              src=inspect.getsource(type(model))
+              print("MODEL_SOURCE_BEGIN")
+              print(src[:50000])
+              print("MODEL_SOURCE_END")
           except Exception as e:
-              print("CODE_ERR", repr(e))
-
-          print("\n=== V5_5 PACKAGE ===")
-          try:
-              importer = torch.package.PackageImporter("/tmp/silero-probe/v5_5_ru.pt")
-              model = importer.load_pickle("tts_models", "model")
-              print("TYPE", type(model))
-              print("SPEAKERS", getattr(model, "speakers", None))
-              print("SAMPLE_RATES", getattr(model, "sample_rates", None))
-              print("DIR_APPLY", [x for x in dir(model) if "tts" in x.lower() or "speaker" in x.lower() or "sample" in x.lower()])
+              print("MODEL_SOURCE_ERR",repr(e))
+          for i,pack in enumerate(packs[:1]):
               try:
-                  scripted = torch.jit.script(model)
-                  print("SCRIPT_SUCCESS", scripted._c._method_names())
-                  scripted.save("/tmp/silero-probe/v5_5_scripted.pt")
-                  print("SCRIPT_SIZE", os.path.getsize("/tmp/silero-probe/v5_5_scripted.pt"))
+                  src=inspect.getsource(type(pack))
+                  print("PACK_SOURCE_BEGIN")
+                  print(src[:50000])
+                  print("PACK_SOURCE_END")
               except Exception as e:
-                  print("SCRIPT_FAIL", type(e).__name__, str(e)[:12000])
-          except Exception as e:
-              print("PACKAGE_FAIL", type(e).__name__, str(e)[:12000])
-              traceback.print_exc()
+                  print("PACK_SOURCE_ERR",repr(e))
           PY
 
       - name: Build APK
