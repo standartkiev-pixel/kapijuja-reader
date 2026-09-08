@@ -19,14 +19,6 @@ object VoiceCatalog {
         VoiceChoice("verse", "Verse")
     )
 
-    val silero = listOf(
-        VoiceChoice("eugene", "Eugene — мужской, глубокий"),
-        VoiceChoice("aidar", "Aidar — мужской, нейтральный"),
-        VoiceChoice("baya", "Baya"),
-        VoiceChoice("kseniya", "Kseniya"),
-        VoiceChoice("xenia", "Xenia")
-    )
-
     val azure = listOf(
         VoiceChoice(
             "ru-RU-DmitryNeural",
@@ -91,7 +83,6 @@ object VoiceCatalog {
 
     fun staticVoices(engine: String): List<VoiceChoice> = when (engine) {
         SettingsStore.ENGINE_OPENAI -> openAi
-        SettingsStore.ENGINE_SILERO -> silero
         SettingsStore.ENGINE_EDGE -> edge
         SettingsStore.ENGINE_AZURE -> azure
         SettingsStore.ENGINE_GOOGLE -> google
