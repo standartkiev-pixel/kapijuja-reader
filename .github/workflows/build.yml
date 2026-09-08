@@ -57,6 +57,63 @@ jobs:
         with:
           gradle-version: '8.13'
 
+      - name: TEMP probe Silero runtime/model interfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --upgrade pip
+          python3 -m pip install --quiet torch==2.1.2 --index-url https://download.pytorch.org/whl/cpu
+          mkdir -p /tmp/silero-probe
+          curl -L --fail --retry 3 -o /tmp/silero-probe/cis.jit https://models.silero.ai/models/tts/ru/v5_cis_base_nostress.jit
+          curl -L --fail --retry 3 -o /tmp/silero-probe/v5_5_ru.pt https://models.silero.ai/models/tts/ru/v5_5_ru.pt
+          python3 - <<'PY'
+          import os, torch, traceback
+          print("TORCH", torch.__version__)
+          for p in ["/tmp/silero-probe/cis.jit", "/tmp/silero-probe/v5_5_ru.pt"]:
+              print("FILE", p, os.path.getsize(p))
+
+          print("\n=== CIS JIT ===")
+          m = torch.jit.load("/tmp/silero-probe/cis.jit", map_location="cpu")
+          print("TYPE", type(m))
+          print("METHODS", m._c._method_names())
+          for name in m._c._method_names():
+              try:
+                  print("SCHEMA", name, m._c._get_method(name).schema)
+              except Exception as e:
+                  print("SCHEMA_ERR", name, repr(e))
+          for attr in ["speakers", "sample_rates", "language", "model_id"]:
+              try:
+                  v=getattr(m, attr)
+                  print("ATTR", attr, type(v), v)
+              except Exception as e:
+                  print("ATTR_ERR", attr, repr(e))
+          try:
+              print("CODE_BEGIN")
+              print(m.code[:20000])
+              print("CODE_END")
+          except Exception as e:
+              print("CODE_ERR", repr(e))
+
+          print("\n=== V5_5 PACKAGE ===")
+          try:
+              importer = torch.package.PackageImporter("/tmp/silero-probe/v5_5_ru.pt")
+              model = importer.load_pickle("tts_models", "model")
+              print("TYPE", type(model))
+              print("SPEAKERS", getattr(model, "speakers", None))
+              print("SAMPLE_RATES", getattr(model, "sample_rates", None))
+              print("DIR_APPLY", [x for x in dir(model) if "tts" in x.lower() or "speaker" in x.lower() or "sample" in x.lower()])
+              try:
+                  scripted = torch.jit.script(model)
+                  print("SCRIPT_SUCCESS", scripted._c._method_names())
+                  scripted.save("/tmp/silero-probe/v5_5_scripted.pt")
+                  print("SCRIPT_SIZE", os.path.getsize("/tmp/silero-probe/v5_5_scripted.pt"))
+              except Exception as e:
+                  print("SCRIPT_FAIL", type(e).__name__, str(e)[:12000])
+          except Exception as e:
+              print("PACKAGE_FAIL", type(e).__name__, str(e)[:12000])
+              traceback.print_exc()
+          PY
+
       - name: Build APK
         run: gradle :app:assembleDebug --stacktrace
 
