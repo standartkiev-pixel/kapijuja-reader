@@ -72,6 +72,7 @@ jobs:
 
           python3 -m pip install --quiet --upgrade pip
           python3 -m pip install --quiet torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          python3 -m pip install --quiet numpy==1.26.4
 
           curl -L --fail --retry 3             -o "$work/v5_5_ru.pt"             https://models.silero.ai/models/tts/ru/v5_5_ru.pt
 
