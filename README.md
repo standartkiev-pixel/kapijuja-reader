@@ -13,6 +13,20 @@ Prototype 0.1.0:
 
 Planned engines: Silero TTS v5.5 Russian, RHVoice, Microsoft Edge test, Microsoft/Azure test, Google test, OpenAI test.
 
+## Peace statement / Заявление о мире
+
+The authors of Kapijuja Reader oppose war in every form. We reject the idea
+that protecting some people should require killing others. If you believe that
+human beings must be defended through the killing of other human beings, we
+respectfully ask you to remain apart from us and this project. This project
+stands for peace, human life, cooperation, and nonviolence.
+
+Авторы Kapijuja Reader выступают против войны в любом её виде. Мы отвергаем
+идею о том, что защита одних людей должна требовать убийства других. Если вы
+считаете, что людей необходимо защищать посредством убийства других людей,
+мы просим вас оставаться в стороне от нас и этого проекта. Этот проект
+выступает за мир, человеческую жизнь, сотрудничество и ненасилие.
+
 ## License
 
 Kapijuja Reader is free and open-source software licensed under the
