@@ -1,17 +1,26 @@
 # Kapijuja Reader
 
-Android text reader / TTS laboratory.
+Free and open-source Android text reader with local and cloud TTS engines.
 
-Prototype 0.1.0:
-- cyber-blue Kapijuja UI based on G2GPS
-- library on the home screen
-- import from document, manual text or URL
-- clean reader screen
-- save to library when Listen is pressed
-- Android TTS playback with sentence highlighting and autoscroll
-- installed Android TTS engine selector
+## Download
 
-Planned engines: Silero TTS v5.5 Russian, RHVoice, Microsoft Edge test, Microsoft/Azure test, Google test, OpenAI test.
+[Download the latest test APK](https://github.com/standartkiev-pixel/kapijuja-reader/releases/download/kapijuja-reader-latest-test/kapijuja-reader.apk)
+
+The current experimental APK targets 64-bit ARM Android devices.
+
+## Features
+
+- document, pasted-text, and URL import
+- local text library
+- sentence highlighting, autoscroll, and tap-to-start
+- foreground playback and media notification controls
+- WAV and MP3 export, depending on the selected engine
+- Android TTS and RHVoice
+- Microsoft Edge Read Aloud
+- Microsoft Azure Speech
+- OpenAI TTS
+- Google Gemini TTS
+- experimental local Silero TTS v5.5
 
 ## Peace statement / Заявление о мире
 
