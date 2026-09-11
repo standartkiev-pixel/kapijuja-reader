@@ -61,14 +61,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base="https://github.com/$GITHUB_REPOSITORY/releases/download/kapijuja-silero-v5_5-android-v1"
+          tag="kapijuja-silero-v5_5-android-v1"
           dir="app/src/main/assets/silero"
           mkdir -p "$dir"
 
-          curl -L --fail --retry 3             -o "$dir/silero-v5_5-tts-jit.pt"             "$base/silero-v5_5-tts-jit.pt"
-          curl -L --fail --retry 3             -o "$dir/silero-v5_5-metadata.json"             "$base/silero-v5_5-metadata.json"
-          curl -L --fail --retry 3             -o "$dir/LICENSE-SILERO.txt"             "$base/LICENSE-SILERO.txt"
-          curl -L --fail --retry 3             -o "$dir/README-SILERO-ANDROID.txt"             "$base/README-SILERO-ANDROID.txt"
+          # Use authenticated GitHub CLI downloads so the build works before
+          # and after the repository visibility changes.
+          gh release download "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir "$dir" \
+            --pattern "silero-v5_5-tts-jit.pt" \
+            --pattern "silero-v5_5-metadata.json" \
+            --pattern "LICENSE-SILERO.txt" \
+            --pattern "README-SILERO-ANDROID.txt" \
+            --clobber
 
           test -s "$dir/silero-v5_5-tts-jit.pt"
           test -s "$dir/silero-v5_5-metadata.json"
