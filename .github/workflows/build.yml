@@ -14,28 +14,105 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       SIGNING_TAG: kapijuja-reader-dev-signing-v1
+      SIGNING_ARCHIVE_PASSWORD: ${{ secrets.KAPIJUJA_SIGNING_ARCHIVE_PASSWORD }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Restore persistent signing key
+      - name: Restore encrypted persistent signing key
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.android"
           keystore="$HOME/.android/debug.keystore"
-          rm -f "$keystore"
+          encrypted="$RUNNER_TEMP/debug.keystore.enc"
+          rm -f "$keystore" "$encrypted"
 
-          if gh release view "$SIGNING_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release download "$SIGNING_TAG" --repo "$GITHUB_REPOSITORY" --pattern "debug.keystore" --dir "$HOME/.android"
+          if [[ -z "${SIGNING_ARCHIVE_PASSWORD:-}" ]]; then
+            echo "KAPIJUJA_SIGNING_ARCHIVE_PASSWORD is not configured."
+            exit 1
+          fi
+
+          asset_names="$(
+            gh release view "$SIGNING_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json assets \
+              --jq '.assets[].name' 2>/dev/null || true
+          )"
+
+          if grep -Fxq "debug.keystore.enc" <<<"$asset_names"; then
+            gh release download "$SIGNING_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "debug.keystore.enc" \
+              --dir "$RUNNER_TEMP" \
+              --clobber
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+              -in "$encrypted" \
+              -out "$keystore" \
+              -pass env:SIGNING_ARCHIVE_PASSWORD
+          elif grep -Fxq "debug.keystore" <<<"$asset_names"; then
+            # Migrate the private release asset without changing the signing identity.
+            gh release download "$SIGNING_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "debug.keystore" \
+              --dir "$HOME/.android" \
+              --clobber
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+              -in "$keystore" \
+              -out "$encrypted" \
+              -pass env:SIGNING_ARCHIVE_PASSWORD
+
+            verification="$RUNNER_TEMP/debug.keystore.verify"
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+              -in "$encrypted" \
+              -out "$verification" \
+              -pass env:SIGNING_ARCHIVE_PASSWORD
+            cmp -s "$keystore" "$verification"
+            rm -f "$verification"
+
+            gh release upload "$SIGNING_TAG" \
+              "$encrypted#debug.keystore.enc" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+            gh release delete-asset "$SIGNING_TAG" "debug.keystore" \
+              --repo "$GITHUB_REPOSITORY" \
+              --yes
           else
-            keytool -genkeypair -v               -keystore "$keystore"               -storepass android               -alias androiddebugkey               -keypass android               -keyalg RSA               -keysize 2048               -validity 10000               -dname "CN=Kapijuja Reader,O=Kapijuja,C=EU"
-            gh release create "$SIGNING_TAG" "$keystore#debug.keystore"               --repo "$GITHUB_REPOSITORY"               --title "Kapijuja Reader persistent development signing key"               --notes "Persistent signing identity for com.kapijuja.reader. Do not replace."               --prerelease
+            keytool -genkeypair -v \
+              -keystore "$keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Kapijuja Reader,O=Kapijuja,C=EU"
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+              -in "$keystore" \
+              -out "$encrypted" \
+              -pass env:SIGNING_ARCHIVE_PASSWORD
+
+            if gh release view "$SIGNING_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release upload "$SIGNING_TAG" \
+                "$encrypted#debug.keystore.enc" \
+                --repo "$GITHUB_REPOSITORY" \
+                --clobber
+            else
+              gh release create "$SIGNING_TAG" \
+                "$encrypted#debug.keystore.enc" \
+                --repo "$GITHUB_REPOSITORY" \
+                --title "Kapijuja Reader encrypted development signing key" \
+                --notes "Encrypted signing identity for com.kapijuja.reader." \
+                --prerelease
+            fi
           fi
 
           test -s "$keystore"
-          keytool -list -v -keystore "$keystore" -storepass android -alias androiddebugkey |
+          keytool -list -v \
+            -keystore "$keystore" \
+            -storepass android \
+            -alias androiddebugkey |
             awk '/SHA256:/{print "Signing certificate SHA-256:",$2; exit}'
 
       - name: Set up JDK 17
