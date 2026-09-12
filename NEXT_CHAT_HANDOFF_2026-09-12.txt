@@ -1,0 +1,138 @@
+KAPIJUJA READER — HANDOFF FOR THE NEXT CHAT
+Date: 2026-09-12
+Repository: standartkiev-pixel/kapijuja-reader
+Branch: main
+Current app version in Gradle: 0.1.8, versionCode 9
+
+IMPORTANT: READ AI_DEVELOPMENT_RULES.md BEFORE MAKING STRUCTURAL CHANGES.
+
+1. WHAT THE USER ASKED TO PRESERVE
+
+The application is already useful and working. Do not restart it from scratch. Preserve the current UI concept, applicationId, signing identity, library behavior, playback behavior, RU/PL/EN localization, export behavior, and background controls unless a task explicitly changes them.
+
+The user wants future AI-assisted development to avoid giant source files that overload model context and make accidental truncation/regressions more likely.
+
+2. ARCHITECTURE DECISION MADE ON 2026-09-12
+
+This concern is valid and is now a project rule.
+
+Current legacy oversized files include:
+- ReaderActivity.kt: about 106 KB
+- SettingsActivity.kt: about 48 KB
+
+Do NOT keep adding unrelated logic to these files.
+
+For handwritten Kotlin/Java code:
+- target roughly 200–500 lines per file;
+- soft review threshold 500 lines;
+- normal hard limit 800 lines or 60 KB;
+- legacy oversized files are temporary migration targets and must not grow;
+- split by responsibility, not mechanically by line count.
+
+A CI source-size guard now exists at:
+- scripts/check_source_size.py
+
+The GitHub Actions build runs it before the Android build.
+
+The full English rules are in:
+- AI_DEVELOPMENT_RULES.md
+
+3. IMPORTANT NUANCE: DO NOT REFACTOR BLINDLY
+
+The keyboard project has a real automated test suite. Kapijuja Reader currently has much less automated test coverage.
+
+Therefore do NOT take ReaderActivity.kt and mechanically split it in one giant rewrite. First add characterization/unit tests around pure logic that will be moved, then extract in small behavior-preserving steps.
+
+Priority tests before/developing during refactor:
+- text segmentation and chunk boundaries;
+- WAV streaming/join behavior;
+- export cancellation state;
+- library retention/pruning;
+- language/default-setting selection;
+- engine/voice default selection;
+- extracted playback state machine logic.
+
+Every extraction should compile and tests should pass before the next extraction.
+
+4. TARGET READERACTIVITY RESPONSIBILITIES
+
+ReaderActivity should eventually become a thin UI/lifecycle shell. Candidate responsibilities to extract incrementally:
+- text segmentation/read position;
+- playback state/orchestration;
+- Android TTS adapter;
+- cloud/local chunk playback coordinator;
+- Silero playback adapter;
+- audio export coordinator;
+- export progress/cancellation state;
+- highlight/autoscroll helpers.
+
+Do not force exact class names. Preserve cohesive responsibilities.
+
+5. TARGET SETTINGSACTIVITY RESPONSIBILITIES
+
+SettingsActivity should gradually delegate:
+- engine selection;
+- voice discovery/selection;
+- provider credentials and connection checks;
+- language/library-retention settings;
+- battery/background settings;
+- diagnostics/service information.
+
+6. PACKAGE DIRECTION
+
+The current flat package is legacy. New substantial code should gradually move toward packages such as:
+- ui.reader
+- ui.settings
+- playback
+- tts.android
+- tts.cloud
+- tts.silero
+- export
+- library
+- diagnostics
+
+Do not reorganize the entire project in one commit.
+
+7. AI CONTEXT DISCIPLINE
+
+For future ChatGPT sessions:
+- read this file and AI_DEVELOPMENT_RULES.md first;
+- search before opening a large source file;
+- open only relevant regions/direct dependencies;
+- never rewrite a 50–100 KB source file just to change a few methods;
+- prefer surgical patches;
+- if a new feature would make an oversized file grow, extract a cohesive component;
+- keep commits small and compile/test after each structural change;
+- update handoff documentation when responsibilities move.
+
+8. CURRENT SILERO WORK
+
+Silero v5.5 experimental local TTS work is in progress.
+
+Known current direction:
+- PyTorch Android runtime is added;
+- official Silero v5.5 Russian package was inspected;
+- official voices are: aidar, baya, kseniya, eugene, xenia;
+- voice names/IDs are now sourced from metadata extracted from the official model, not a hand-written list;
+- an Android-loadable inner TorchScript TTS module was extracted from the official package;
+- the experimental APK is arm64-v8a to avoid duplicating the large native runtime for multiple ABIs;
+- SileroRuntime.kt exists and connects local inference to Reader playback;
+- the first Android adapter intentionally does not yet include the separate Python Silero accentor, so stress placement may differ from the full Python package;
+- verify CI build and real-device playback before declaring Silero stable;
+- long-file Silero export should be completed with streaming semantics, not a giant in-memory buffer.
+
+9. BACKGROUND EXPORT / SCREEN SLEEP
+
+A foreground data-sync export service and PARTIAL_WAKE_LOCK were added so long audio export can continue with the screen off. The notification mirrors progress and supports cancellation. Preserve this behavior and test long exports with the display sleeping.
+
+10. DEVELOPMENT PRIORITY
+
+Recommended order:
+1) keep current working Reader behavior stable;
+2) finish/verify Silero on the device;
+3) add characterization tests;
+4) refactor ReaderActivity in several safe passes;
+5) refactor SettingsActivity in several safe passes;
+6) remove legacy CI size exceptions once the files are below the normal limit.
+
+The goal is not to maximize the number of files. The goal is to prevent large monolithic source blobs, reduce AI context pressure, and make regressions easier to isolate.
