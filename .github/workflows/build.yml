@@ -20,6 +20,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Check source architecture size
+        run: python3 scripts/check_source_size.py
+
       - name: Restore encrypted persistent signing key
         shell: bash
         run: |
