@@ -8,6 +8,16 @@ Free and open-source Android text reader with local and cloud TTS engines.
 
 The current experimental APK targets 64-bit ARM Android devices.
 
+## Development handoff and architecture
+
+Before substantial AI-assisted development, read:
+
+- [AI_DEVELOPMENT_RULES.md](AI_DEVELOPMENT_RULES.md) — source-size, modularity, testing, and context-discipline rules
+- [NEXT_CHAT_HANDOFF_2026-09-12.txt](NEXT_CHAT_HANDOFF_2026-09-12.txt) — current next-chat handoff
+- [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) — longer project history and implementation notes
+
+The repository intentionally prevents already-oversized legacy source files from silently growing further. Refactoring should be incremental and behavior-preserving, with characterization tests added before large structural moves.
+
 ## Features
 
 - document, pasted-text, and URL import
