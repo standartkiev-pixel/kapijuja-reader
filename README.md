@@ -10,11 +10,15 @@ The current experimental APK targets 64-bit ARM Android devices.
 
 ## Development handoff and architecture
 
-Before substantial AI-assisted development, read:
+For AI-assisted development, use progressive context loading instead of reading the whole repository:
 
-- [AI_DEVELOPMENT_RULES.md](AI_DEVELOPMENT_RULES.md) — source-size, modularity, testing, and context-discipline rules
-- [NEXT_CHAT_HANDOFF_2026-09-12.txt](NEXT_CHAT_HANDOFF_2026-09-12.txt) — current next-chat handoff
-- [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) — longer project history and implementation notes
+- [AI_CONTEXT_INDEX.md](AI_CONTEXT_INDEX.md) — **start here**; routes a task to the minimum relevant files
+- [AI_DEVELOPMENT_RULES.md](AI_DEVELOPMENT_RULES.md) — source-size, modularity, testing, and safe-edit rules
+- [NEXT_CHAT_HANDOFF_2026-09-12.txt](NEXT_CHAT_HANDOFF_2026-09-12.txt) — short current-state handoff
+- [docs/ai/TTS_CONTEXT.md](docs/ai/TTS_CONTEXT.md) — TTS/provider routing
+- [docs/ai/READER_CONTEXT.md](docs/ai/READER_CONTEXT.md) — playback/export/Reader routing
+- [docs/ai/SETTINGS_CONTEXT.md](docs/ai/SETTINGS_CONTEXT.md) — settings/library routing
+- [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md) — longer historical/implementation record; search it by topic rather than loading it in full by default
 
 The repository intentionally prevents already-oversized legacy source files from silently growing further. Refactoring should be incremental and behavior-preserving, with characterization tests added before large structural moves.
 
