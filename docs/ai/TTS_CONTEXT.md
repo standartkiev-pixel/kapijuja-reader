@@ -2,6 +2,8 @@
 
 Read this file before changing a speech engine/provider.
 
+For the current provider/price/quality shortlist, read `TTS_PROVIDER_RESEARCH_2026-09-14.md` only when the task is provider selection, benchmarking, or adding a new provider. Do not preload it for unrelated Reader work.
+
 ## Current engines
 
 The project currently has these TTS routes:
