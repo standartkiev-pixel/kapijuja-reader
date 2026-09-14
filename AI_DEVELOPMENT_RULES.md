@@ -117,15 +117,19 @@ After a legacy file is refactored below the normal limit, remove its exception r
 
 ## Context discipline for future ChatGPT sessions
 
-Future AI sessions working on this repository should:
+Use progressive context loading.
 
-- read `PROJECT_HANDOFF.md` and this file first;
-- search before opening large files;
-- avoid loading unrelated large files into context;
-- work on one subsystem at a time;
-- preserve behavior before improving structure;
-- keep commits small enough that a regression has a clear cause;
-- update the handoff when architecture or responsibilities change.
+1. Read `AI_CONTEXT_INDEX.md` first.
+2. Read this file.
+3. Read the short current handoff (`NEXT_CHAT_HANDOFF_2026-09-12.txt`, or its future replacement).
+4. Open only the subsystem context document named by `AI_CONTEXT_INDEX.md`.
+5. Search before opening large source files and read only the relevant ranges/direct dependencies.
+
+`PROJECT_HANDOFF.md` is a long historical/implementation record. Search it for the specific topic when needed; do not load it end-to-end by default.
+
+Do not preload both giant Activities, every provider client, the full project history, CI files, and unrelated services into one model context window.
+
+When architecture or responsibilities change, update the relevant `docs/ai/*_CONTEXT.md` routing note and the handoff.
 
 ## Current priority order
 
