@@ -14,6 +14,7 @@ object SettingsStore {
     private const val KEY_AZURE_DEFAULT_MIGRATED = "azure_default_migrated"
     private const val KEY_GOOGLE_API_KEY = "google_api_key"
     private const val KEY_GOOGLE_INSTRUCTIONS = "google_instructions"
+    private const val KEY_XAI_API_KEY = "xai_api_key"
     private const val KEY_UI_LANGUAGE = "ui_language"
     private const val KEY_LIBRARY_LIMIT = "library_limit"
 
@@ -25,6 +26,7 @@ object SettingsStore {
     const val ENGINE_EDGE = "cloud:edge"
     const val ENGINE_AZURE = "cloud:azure"
     const val ENGINE_GOOGLE = "cloud:google"
+    const val ENGINE_XAI = "cloud:xai"
 
     const val DEFAULT_AZURE_REGION = "switzerlandnorth"
 
@@ -237,6 +239,13 @@ object SettingsStore {
                 value.trim()
             )
             .apply()
+    }
+
+    fun xaiApiKey(context: Context): String =
+        prefs(context).getString(KEY_XAI_API_KEY, "") ?: ""
+
+    fun setXaiApiKey(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_XAI_API_KEY, value.trim()).apply()
     }
 
     fun uiLanguage(context: Context): String =
