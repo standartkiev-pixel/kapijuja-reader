@@ -1,0 +1,93 @@
+KAPIJUJA READER — CURRENT HANDOFF — 2026-09-15
+
+START HERE
+1. Read AI_CONTEXT_INDEX.md.
+2. Read AI_DEVELOPMENT_RULES.md.
+3. Read this file.
+4. For TTS work read docs/ai/TTS_CONTEXT.md, then only the provider/client files needed.
+
+CURRENT FEATURE
+xAI Grok TTS has been integrated on branch feature/xai-grok-tts.
+
+WHAT WAS ADDED
+- XaiTtsClient.kt
+  - official REST POST https://api.x.ai/v1/tts
+  - Bearer API key
+  - Russian language = ru
+  - MP3 24 kHz / 128 kbps
+  - speed support
+  - text normalization
+  - 15,000-character provider hard limit
+  - export splitter defaults to about 12,000 characters
+  - GET /v1/tts/voices connection test
+  - character-based cost estimate using current provider list price snapshot
+  - DNS/connect retries, but no automatic timeout retry to avoid accidental double billing
+
+- CloudTtsDispatcher.kt
+  - common cloud playback/export dispatch extracted from ReaderActivity
+  - owns cloud provider routing, temp audio format and export splitting selection
+  - OpenAI and xAI are marked paid/prefetch-sensitive
+
+- ProviderConnectionTester.kt
+  - OpenAI/Azure/Google/xAI connection-test boilerplate extracted from SettingsActivity
+
+- SettingsStore.kt
+  - ENGINE_XAI = cloud:xai
+  - local xAI API-key preference
+
+- VoiceCatalog.kt
+  - current official xAI built-in voice roster
+  - default Reader choice: orion
+
+- SettingsActivity.kt
+  - xAI key field
+  - xAI engine selection
+  - static xAI voice selection
+  - connection-test button
+  - xAI status/help text
+
+- ReaderActivity.kt
+  - xAI playback route
+  - paid-use confirmation based on remaining characters
+  - xAI playback uses existing cloud chunking
+  - no speculative next-chunk prefetch for xAI, so pause does not intentionally generate unheard paid audio
+  - xAI MP3 full-text export with confirmation/cost estimate
+  - shared cloud synthesis/export routing extracted to CloudTtsDispatcher
+
+ARCHITECTURE RESULT
+This feature did not grow the two legacy Activities.
+- ReaderActivity historical baseline: 105,730 bytes; feature version is about 88.6 KB.
+- SettingsActivity historical baseline: 47,506 bytes; feature version is about 46.8 KB.
+
+VALIDATION
+A new non-publishing workflow .github/workflows/feature-check.yml checks feature branches and PRs:
+- scripts/check_source_size.py
+- :app:compileDebugKotlin
+
+First feature run 35003196220 completed successfully on 2026-09-15.
+
+IMPORTANT BEHAVIOR
+- xAI API key is never committed or embedded in source. User enters it in Settings.
+- xAI is paid. Do not add paid speculative prefetch without explicit design approval.
+- xAI full export is chunked and streamed to the output file; do not accumulate an entire book's audio in RAM.
+- REST is used rather than WebSocket because the app already has a reliable file/chunk playback pipeline and direct WebSocket client keys should not be exposed.
+- Google Gemini remains available but is not required for xAI operation.
+
+NEXT SAFE WORK
+1. Merge feature/xai-grok-tts only after PR CI is green.
+2. Let the normal main workflow build/publish the signed test APK.
+3. Test on a real device with a user-supplied xAI key:
+   - Settings -> xAI Grok TTS
+   - paste key
+   - Test xAI Grok TTS
+   - choose Orion, Lux and Perseus for Russian A/B listening
+   - test playback pause/resume and tap-to-start
+   - test MP3 export and cancellation
+4. If xAI Russian quality is good, integrate Inworld TTS-2 Flash next using the same provider/client + CloudTtsDispatcher pattern.
+5. Qwen3-TTS-Flash is the next budget candidate after Inworld.
+
+DO NOT
+- put API keys in GitHub, APK constants or docs;
+- re-expand provider HTTP code into ReaderActivity;
+- preload whole ReaderActivity/SettingsActivity in AI context unless doing a structural refactor;
+- treat provider HTTP 429 as one generic cause without preserving provider error text.

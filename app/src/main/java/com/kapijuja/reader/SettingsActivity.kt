@@ -27,6 +27,7 @@ class SettingsActivity : Activity() {
     private lateinit var azureRegionInput: EditText
     private lateinit var googleKeyInput: EditText
     private lateinit var googleInstructionInput: EditText
+    private lateinit var xaiKeyInput: EditText
     private lateinit var serviceText: TextView
     private lateinit var languageButton: Button
     private lateinit var libraryLimitButton: Button
@@ -284,6 +285,31 @@ class SettingsActivity : Activity() {
         KapijujaUiTheme.input(this, googleInstructionInput)
         root.addView(googleInstructionInput, inputParams())
 
+        root.addView(sectionTitle("xAI Grok TTS"))
+        val xaiNote = TextView(this).apply {
+            text =
+                t(
+                    "xAI Grok TTS поддерживает русский. Ключ хранится только в данных приложения на этом устройстве. Тарификация идёт по входным символам; по умолчанию выбран голос Orion.",
+                    "xAI Grok TTS obsługuje język rosyjski. Klucz jest przechowywany wyłącznie w danych aplikacji na tym urządzeniu. Opłata jest naliczana za znaki wejściowe; domyślny głos to Orion.",
+                    "xAI Grok TTS supports Russian. The key is stored only in app data on this device. Billing is based on input characters; Orion is the default voice."
+                )
+            textSize = 14f
+            setPadding(dp(4), 0, dp(4), dp(8))
+        }
+        KapijujaUiTheme.secondary(xaiNote)
+        root.addView(xaiNote)
+
+        xaiKeyInput = EditText(this).apply {
+            hint = "xAI API key"
+            textSize = 15f
+            inputType =
+                InputType.TYPE_CLASS_TEXT or
+                    InputType.TYPE_TEXT_VARIATION_PASSWORD
+            setText(SettingsStore.xaiApiKey(this@SettingsActivity))
+        }
+        KapijujaUiTheme.input(this, xaiKeyInput)
+        root.addView(xaiKeyInput, inputParams())
+
         root.addView(sectionTitle(t("Защита от расходов", "Cost protection")))
         val costNote = TextView(this).apply {
             text = t("Порог, после которого приложение обязательно покажет ориентировочную стоимость перед генерацией, €:", "Threshold above which the app must show the estimated generation cost, €:")
@@ -305,7 +331,7 @@ class SettingsActivity : Activity() {
         val testOpenAi = Button(this).apply {
             text = t("Проверить OpenAI", "Test OpenAI")
             textSize = 16f
-            setOnClickListener { testOpenAiConnection() }
+            setOnClickListener { testProviderConnection(SettingsStore.ENGINE_OPENAI) }
         }
         KapijujaUiTheme.button(this, testOpenAi)
         root.addView(testOpenAi, fullButton())
@@ -313,9 +339,7 @@ class SettingsActivity : Activity() {
         val testAzure = Button(this).apply {
             text = t("Проверить Azure Speech", "Test Azure Speech")
             textSize = 16f
-            setOnClickListener {
-                testAzureConnection()
-            }
+            setOnClickListener { testProviderConnection(SettingsStore.ENGINE_AZURE) }
         }
         KapijujaUiTheme.button(this, testAzure)
         root.addView(testAzure, fullButton())
@@ -323,12 +347,18 @@ class SettingsActivity : Activity() {
         val testGoogle = Button(this).apply {
             text = t("Проверить Google Gemini TTS", "Test Google Gemini TTS")
             textSize = 16f
-            setOnClickListener {
-                testGoogleConnection()
-            }
+            setOnClickListener { testProviderConnection(SettingsStore.ENGINE_GOOGLE) }
         }
         KapijujaUiTheme.button(this, testGoogle)
         root.addView(testGoogle, fullButton())
+
+        val testXai = Button(this).apply {
+            text = t("Проверить xAI Grok TTS", "Sprawdź xAI Grok TTS", "Test xAI Grok TTS")
+            textSize = 16f
+            setOnClickListener { testProviderConnection(SettingsStore.ENGINE_XAI) }
+        }
+        KapijujaUiTheme.button(this, testXai)
+        root.addView(testXai, fullButton())
 
         val showLog = Button(this).apply {
             text = t("Показать журнал диагностики", "Show diagnostics log")
@@ -388,12 +418,15 @@ class SettingsActivity : Activity() {
                 googleInstructionInput.text.toString()
             )
         }
+        if (::xaiKeyInput.isInitialized) {
+            SettingsStore.setXaiApiKey(this, xaiKeyInput.text.toString())
+        }
         val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull()
             ?: SettingsStore.confirmEuro(this)
         SettingsStore.setConfirmEuro(this, limit)
         AppDiagnostics.info(
             this,
-            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} openAiKey=${SettingsStore.openAiKey(this).isNotBlank()} azureKey=${SettingsStore.azureSpeechKey(this).isNotBlank()} azureRegion=${SettingsStore.azureRegion(this)} googleKey=${SettingsStore.googleApiKey(this).isNotBlank()}"
+            "Settings autosaved: engine=${SettingsStore.engine(this)} voice=${SettingsStore.voice(this)} openAiKey=${SettingsStore.openAiKey(this).isNotBlank()} azureKey=${SettingsStore.azureSpeechKey(this).isNotBlank()} azureRegion=${SettingsStore.azureRegion(this)} googleKey=${SettingsStore.googleApiKey(this).isNotBlank()} xaiKey=${SettingsStore.xaiApiKey(this).isNotBlank()}"
         )
     }
 
@@ -579,8 +612,8 @@ class SettingsActivity : Activity() {
             t("Microsoft Azure — нужен credential", "Microsoft Azure — credential required")
         dynamic += SettingsStore.ENGINE_GOOGLE to
             "Google Gemini 2.5 Flash TTS"
-
-        val notReady = emptySet<String>()
+        dynamic += SettingsStore.ENGINE_XAI to
+            "xAI Grok TTS"
 
         AlertDialog.Builder(this)
             .setTitle(t("Выберите движок", "Choose engine"))
@@ -648,6 +681,23 @@ class SettingsActivity : Activity() {
                                 "Движок выбран. Вставьте ниже API key из Google AI Studio; настройки сохраняются автоматически.",
                                 "Silnik wybrany. Wklej poniżej klucz API z Google AI Studio; ustawienia zapisują się automatycznie.",
                                 "Engine selected. Paste the API key from Google AI Studio below; settings are saved automatically."
+                            )
+                        )
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+
+                if (
+                    id == SettingsStore.ENGINE_XAI &&
+                    SettingsStore.xaiApiKey(this).isBlank()
+                ) {
+                    AlertDialog.Builder(this)
+                        .setTitle("xAI Grok TTS")
+                        .setMessage(
+                            t(
+                                "Движок выбран. Вставьте ниже xAI API key; настройки сохраняются автоматически.",
+                                "Silnik wybrany. Wklej poniżej klucz API xAI; ustawienia zapisują się automatycznie.",
+                                "Engine selected. Paste the xAI API key below; settings are saved automatically."
                             )
                         )
                         .setPositiveButton("OK", null)
@@ -784,158 +834,11 @@ class SettingsActivity : Activity() {
         probeTts = if (pkg == null) TextToSpeech(this, listener) else TextToSpeech(this, listener, pkg)
     }
 
-    private fun testOpenAiConnection() {
+    private fun testProviderConnection(engine: String) {
         persistSettings()
-        val key = SettingsStore.openAiKey(this)
-        if (key.isBlank()) {
-            Toast.makeText(
-                this,
-                t(
-                    "Сначала введите OpenAI API key",
-                    "Najpierw wprowadź klucz API OpenAI",
-                    "Enter the OpenAI API key first"
-                ),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        serviceText.text =
-            t(
-                "Проверка api.openai.com…",
-                "Sprawdzanie api.openai.com…",
-                "Checking api.openai.com…"
-            )
-
-        Thread {
-            try {
-                val result = OpenAiTtsClient.checkAccess(key, this)
-                runOnUiThread {
-                    val localized = UiText.localizeMessage(this, result)
-                    serviceText.text = localized
-                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
-                }
-            } catch (error: Throwable) {
-                AppDiagnostics.error(this, "OpenAI test failed", error)
-                runOnUiThread {
-                    val message =
-                        UiText.localizeMessage(
-                            this,
-                            error.message ?: "OpenAI error"
-                        )
-                    serviceText.text = message
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
+        ProviderConnectionTester.test(this, engine) { serviceText.text = it }
     }
 
-    private fun testAzureConnection() {
-        persistSettings()
-
-        val key = SettingsStore.azureSpeechKey(this)
-        val region = SettingsStore.azureRegion(this)
-
-        if (key.isBlank() || region.isBlank()) {
-            Toast.makeText(
-                this,
-                t(
-                    "Введите Azure Speech key и region",
-                    "Wprowadź klucz Azure Speech i region",
-                    "Enter the Azure Speech key and region"
-                ),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        serviceText.text =
-            t(
-                "Проверка Azure Speech…",
-                "Sprawdzanie Azure Speech…",
-                "Checking Azure Speech…"
-            )
-
-        Thread {
-            try {
-                val result =
-                    AzureTtsClient.checkAccess(
-                        speechKey = key,
-                        region = region,
-                        context = this
-                    )
-
-                runOnUiThread {
-                    val localized = UiText.localizeMessage(this, result)
-                    serviceText.text = localized
-                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
-                }
-            } catch (error: Throwable) {
-                AppDiagnostics.error(this, "Azure test failed", error)
-                runOnUiThread {
-                    val message =
-                        UiText.localizeMessage(
-                            this,
-                            error.message ?: "Azure error"
-                        )
-                    serviceText.text = message
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
-
-    private fun testGoogleConnection() {
-        persistSettings()
-        val key = SettingsStore.googleApiKey(this)
-
-        if (key.isBlank()) {
-            Toast.makeText(
-                this,
-                t(
-                    "Введите Google Gemini API key",
-                    "Wprowadź klucz API Google Gemini",
-                    "Enter the Google Gemini API key"
-                ),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        serviceText.text =
-            t(
-                "Проверка Google Gemini TTS…",
-                "Sprawdzanie Google Gemini TTS…",
-                "Checking Google Gemini TTS…"
-            )
-
-        Thread {
-            try {
-                val result =
-                    GoogleGeminiTtsClient.checkAccess(
-                        apiKey = key,
-                        context = this
-                    )
-
-                runOnUiThread {
-                    val localized = UiText.localizeMessage(this, result)
-                    serviceText.text = localized
-                    Toast.makeText(this, localized, Toast.LENGTH_LONG).show()
-                }
-            } catch (error: Throwable) {
-                AppDiagnostics.error(this, "Google Gemini test failed", error)
-                runOnUiThread {
-                    val message =
-                        UiText.localizeMessage(
-                            this,
-                            error.message ?: "Google Gemini error"
-                        )
-                    serviceText.text = message
-                    Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-                }
-            }
-        }.start()
-    }
     private fun refreshServiceText() {
         if (!::serviceText.isInitialized) return
 
@@ -969,6 +872,13 @@ class SettingsActivity : Activity() {
                 t("нет", "brak", "none")
             }
 
+        val xaiState =
+            if (SettingsStore.xaiApiKey(this).isNotBlank()) {
+                t("сохранён", "zapisany", "saved")
+            } else {
+                t("нет", "brak", "none")
+            }
+
         serviceText.text =
             t("Текущий движок", "Bieżący silnik", "Current engine") +
                 ": ${engineLabel(engine)}\n" +
@@ -976,7 +886,8 @@ class SettingsActivity : Activity() {
                 ": ${voice.ifBlank { t("не выбран", "nie wybrano", "not selected") }}\n" +
                 "OpenAI key: $openAiState\n" +
                 "Azure: $azureState\n" +
-                "Google Gemini key: $googleState"
+                "Google Gemini key: $googleState\n" +
+                "xAI key: $xaiState"
     }
 
     private fun updateStatus() {
@@ -1020,6 +931,13 @@ class SettingsActivity : Activity() {
                         "Google Gemini 2.5 Flash TTS uses the Developer API. Russian is supported; the default voice is Gacrux (mature)."
                     )
 
+                engine == SettingsStore.ENGINE_XAI ->
+                    t(
+                        "xAI Grok TTS подключён через официальный REST API. Русский поддерживается; голос по умолчанию Orion. Платный движок: приложение не предзагружает следующий фрагмент, чтобы не оплачивать непрослушанный текст.",
+                        "xAI Grok TTS korzysta z oficjalnego REST API. Język rosyjski jest obsługiwany; domyślny głos to Orion. To płatny silnik: aplikacja nie generuje następnego fragmentu z wyprzedzeniem, aby nie płacić za niesłuchany tekst.",
+                        "xAI Grok TTS uses the official REST API. Russian is supported; Orion is the default voice. It is a paid engine, so the app does not pre-generate the next chunk and charge for unheard text."
+                    )
+
                 engine == SettingsStore.ENGINE_RHVOICE ->
                     t(
                         "RHVoice работает полностью офлайн и без API key. Для русского мужского чтения рекомендуем Aleksandr-HQ; движок и голосовые пакеты устанавливаются отдельно.",
@@ -1037,6 +955,7 @@ class SettingsActivity : Activity() {
                 else -> ""
             }
     }
+
     private fun currentVoiceLabel(): String {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
@@ -1056,10 +975,9 @@ class SettingsActivity : Activity() {
         id == SettingsStore.ENGINE_OPENAI -> "OpenAI — GPT-4o Mini TTS"
         id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
         id == SettingsStore.ENGINE_EDGE -> t("Microsoft Edge — тест", "Microsoft Edge — test", "Microsoft Edge — test")
-        id == SettingsStore.ENGINE_AZURE ->
-            "Microsoft Azure Speech"
-        id == SettingsStore.ENGINE_GOOGLE ->
-            "Google Gemini 2.5 Flash TTS"
+        id == SettingsStore.ENGINE_AZURE -> "Microsoft Azure Speech"
+        id == SettingsStore.ENGINE_GOOGLE -> "Google Gemini 2.5 Flash TTS"
+        id == SettingsStore.ENGINE_XAI -> "xAI Grok TTS"
         id == SettingsStore.ENGINE_RHVOICE ->
             t("RHVoice — бесплатно, офлайн", "RHVoice — bezpłatny, offline", "RHVoice — free, offline")
         id.startsWith("android:") ->

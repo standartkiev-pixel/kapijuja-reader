@@ -75,6 +75,37 @@ object VoiceCatalog {
         VoiceChoice("Sadachbia", "Sadachbia — lively")
     )
 
+    val xai = listOf(
+        VoiceChoice("orion", "Orion — rich, cinematic, resonant"),
+        VoiceChoice("lux", "Lux — calm, grounded, wise"),
+        VoiceChoice("perseus", "Perseus — strong, confident"),
+        VoiceChoice("rigel", "Rigel — precise, professional"),
+        VoiceChoice("naksh", "Naksh — warm, thoughtful, wise"),
+        VoiceChoice("atlas", "Atlas — commanding, reassuring"),
+        VoiceChoice("sal", "Sal — smooth, balanced"),
+        VoiceChoice("rex", "Rex — confident, clear"),
+        VoiceChoice("leo", "Leo — authoritative, strong"),
+        VoiceChoice("lumen", "Lumen — warm, articulate"),
+        VoiceChoice("castor", "Castor — easygoing"),
+        VoiceChoice("ursa", "Ursa — friendly, warm"),
+        VoiceChoice("liora", "Liora — calm, grounded"),
+        VoiceChoice("aurora", "Aurora — serene, steady"),
+        VoiceChoice("carina", "Carina — soft, soothing"),
+        VoiceChoice("luna", "Luna — gentle, patient"),
+        VoiceChoice("celeste", "Celeste — reassuring"),
+        VoiceChoice("ara", "Ara — warm, friendly"),
+        VoiceChoice("altair", "Altair — elegant, refined"),
+        VoiceChoice("kepler", "Kepler — charismatic"),
+        VoiceChoice("cosmo", "Cosmo — bright, clear"),
+        VoiceChoice("iris", "Iris — friendly, upbeat"),
+        VoiceChoice("helios", "Helios — energetic"),
+        VoiceChoice("zenith", "Zenith — sharp, focused"),
+        VoiceChoice("helix", "Helix — bold, dynamic"),
+        VoiceChoice("zagan", "Zagan — powerful, dramatic"),
+        VoiceChoice("sirius", "Sirius — playful"),
+        VoiceChoice("eve", "Eve — energetic, upbeat")
+    )
+
     val edge = listOf(
         VoiceChoice("ru-RU-DmitryNeural", "Dmitry Neural — мужской"),
         VoiceChoice("ru-RU-SvetlanaNeural", "Svetlana Neural"),
@@ -86,6 +117,7 @@ object VoiceCatalog {
         SettingsStore.ENGINE_EDGE -> edge
         SettingsStore.ENGINE_AZURE -> azure
         SettingsStore.ENGINE_GOOGLE -> google
+        SettingsStore.ENGINE_XAI -> xai
         else -> emptyList()
     }
 
@@ -96,6 +128,7 @@ object VoiceCatalog {
         SettingsStore.ENGINE_EDGE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_AZURE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_GOOGLE -> "Gacrux"
+        SettingsStore.ENGINE_XAI -> "orion"
         else -> ""
     }
 }
