@@ -7,6 +7,11 @@ object ReaderLimits {
     const val WARN_DOCUMENT_CHARS = 750_000
     const val MAX_DOCUMENT_CHARS = 2_000_000
 
+    // Reject pathological source files before readBytes()/ZIP expansion can ask
+    // the process for unbounded memory. Normal text/docx books are far smaller.
+    const val MAX_SOURCE_BYTES = 64L * 1024L * 1024L
+    const val MAX_DOCX_XML_BYTES = 32L * 1024L * 1024L
+
     // The actual document bodies live in separate .txt files. The JSON index is
     // metadata only, but still needs a hard count ceiling when "all" is selected.
     const val HARD_MAX_LIBRARY_ITEMS = 5_000
