@@ -45,6 +45,8 @@ class ReaderActivity : Activity() {
     private lateinit var voiceButton: Button
     private lateinit var speedButton: Button
     private lateinit var saveAudioButton: Button
+    private lateinit var saveRow: LinearLayout
+    private lateinit var grokEditToolsButton: Button
     private lateinit var exportProgress: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var resultText: TextView
@@ -300,9 +302,7 @@ class ReaderActivity : Activity() {
         playPause = Button(this).apply {
             text = t("Слушать", "Listen")
             setOnClickListener {
-                if (editMode) {
-                    saveEditedText()
-                } else if (isPlaying) {
+                if (isPlaying) {
                     pauseSpeech()
                 } else {
                     startOrResume()
@@ -371,6 +371,26 @@ class ReaderActivity : Activity() {
         voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(52), 1f))
         player.addView(voiceRow)
 
+        grokEditToolsButton = Button(this).apply {
+            text =
+                t(
+                    "Grok: ударение / подача ▾",
+                    "Grok: akcent / sposób czytania ▾",
+                    "Grok: stress / delivery ▾"
+                )
+            textSize = 14f
+            visibility = View.GONE
+            setOnClickListener { showGrokEditorTools() }
+        }
+        KapijujaUiTheme.button(this, grokEditToolsButton, primary = true)
+        player.addView(
+            grokEditToolsButton,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(50)
+            ).apply { topMargin = dp(7) }
+        )
+
         exportProgress = ProgressBar(
             this,
             null,
@@ -399,7 +419,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.secondary(progressText)
         player.addView(progressText)
 
-        val saveRow = LinearLayout(this).apply {
+        saveRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(7), 0, 0)
@@ -514,9 +534,10 @@ class ReaderActivity : Activity() {
     }
 
     private fun startOrResume() {
-        if (text.isBlank() || editMode) return
+        if (editMode && !prepareEditorPlaybackSnapshot()) return
+        if (text.isBlank()) return
 
-        if (libraryId == null) {
+        if (!editMode && libraryId == null) {
             libraryId = LibraryStore.add(this, title, source, text)
         }
         player.visibility = View.VISIBLE
@@ -1251,7 +1272,18 @@ class ReaderActivity : Activity() {
         isPlaying = false
         if (wasPlaying) syncPlaybackNotification()
 
-        if (::playPause.isInitialized) playPause.text = t("Продолжить", "Resume")
+        if (::playPause.isInitialized) {
+            playPause.text =
+                if (editMode) {
+                    t(
+                        "Слушать от курсора",
+                        "Czytaj od kursora",
+                        "Listen from cursor"
+                    )
+                } else {
+                    t("Продолжить", "Resume")
+                }
+        }
         if (::listenButton.isInitialized && !editMode) listenButton.text = "Слушать"
 
         if (
@@ -1280,24 +1312,42 @@ class ReaderActivity : Activity() {
     }
 
     private fun enterEditMode() {
+        val editOffset =
+            segments.getOrNull(currentSegment)?.start
+                ?.coerceIn(0, text.length)
+                ?: 0
+
         pauseSpeech()
         editMode = true
         editor.setText(text)
-        editor.setSelection(editor.text.length)
+        val safeOffset = editOffset.coerceIn(0, editor.text.length)
+        editor.setSelection(safeOffset)
         textView.visibility = View.GONE
         editor.visibility = View.VISIBLE
         player.visibility = View.VISIBLE
         editButton.text = t("Сохранить", "Save")
-        playPause.isEnabled = false
-        playPause.text = t("Редактирование", "Editing")
-        engineButton.isEnabled = false
-        voiceButton.isEnabled = false
+        playPause.isEnabled = true
+        playPause.text =
+            t(
+                "Слушать от курсора",
+                "Czytaj od kursora",
+                "Listen from cursor"
+            )
+        engineButton.isEnabled = true
+        voiceButton.isEnabled = true
         saveAudioButton.isEnabled = false
+        saveRow.visibility = View.GONE
+        updateEditorToolVisibility()
         editor.requestFocus()
+        scrollEditorToOffset(safeOffset)
     }
 
     private fun saveEditedText() {
-        val updated = editor.text.toString().trim()
+        if (isPlaying) pauseSpeech()
+
+        val raw = editor.text.toString()
+        val leadingTrim = raw.length - raw.trimStart().length
+        val updated = raw.trim()
         if (updated.isBlank()) {
             Toast.makeText(
                 this,
@@ -1307,9 +1357,15 @@ class ReaderActivity : Activity() {
             return
         }
 
+        val editorOffset =
+            maxOf(editor.selectionStart, editor.selectionEnd)
+                .coerceAtLeast(0)
+        val savedOffset =
+            (editorOffset - leadingTrim).coerceIn(0, updated.length)
+
         text = updated
         segments = segmentText(text)
-        currentSegment = 0
+        currentSegment = findSegmentForOffset(savedOffset)
         openAiConfirmedHash = null
         xaiConfirmedHash = null
 
@@ -1329,14 +1385,160 @@ class ReaderActivity : Activity() {
         engineButton.isEnabled = true
         voiceButton.isEnabled = true
         saveAudioButton.isEnabled = true
+        saveRow.visibility = View.VISIBLE
         player.visibility = View.VISIBLE
+        updateEditorToolVisibility()
         resultText.text = t("Текст сохранён.", "Text saved.")
+        if (segments.isNotEmpty()) highlight(currentSegment)
 
         Toast.makeText(
             this,
             t("Текст сохранён", "Tekst zapisany", "Text saved"),
             Toast.LENGTH_SHORT
         ).show()
+    }
+
+    private fun prepareEditorPlaybackSnapshot(): Boolean {
+        val draft = editor.text.toString()
+        if (draft.isBlank()) {
+            Toast.makeText(
+                this,
+                t("Текст пустой", "Tekst jest pusty", "Text is empty"),
+                Toast.LENGTH_SHORT
+            ).show()
+            return false
+        }
+
+        text = draft
+        segments = segmentText(text)
+        if (segments.isEmpty()) return false
+
+        val cursor =
+            maxOf(editor.selectionStart, editor.selectionEnd)
+                .coerceIn(0, text.length)
+        currentSegment = findSegmentForOffset(cursor)
+        openAiConfirmedHash = null
+        xaiConfirmedHash = null
+        resultText.text =
+            t(
+                "Редактор • чтение от курсора",
+                "Edytor • czytanie od kursora",
+                "Editor • reading from cursor"
+            )
+        return true
+    }
+
+    private fun findSegmentForOffset(offset: Int): Int {
+        if (segments.isEmpty()) return 0
+        val safe = offset.coerceIn(0, text.length)
+        return segments.indexOfFirst { safe < it.end }
+            .let { if (it >= 0) it else segments.lastIndex }
+    }
+
+    private fun scrollEditorToOffset(offset: Int) {
+        editor.post {
+            val layout = editor.layout ?: return@post
+            val safe = offset.coerceIn(0, editor.text.length)
+            val line = layout.getLineForOffset(safe)
+            val y =
+                (layout.getLineTop(line) - scroll.height / 3)
+                    .coerceAtLeast(0)
+            scroll.scrollTo(0, y)
+        }
+    }
+
+    private fun updateEditorToolVisibility() {
+        if (!::grokEditToolsButton.isInitialized) return
+        grokEditToolsButton.visibility =
+            if (editMode && SettingsStore.engine(this) == SettingsStore.ENGINE_XAI) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
+    }
+
+    private fun showGrokEditorTools() {
+        if (!editMode || SettingsStore.engine(this) != SettingsStore.ENGINE_XAI) return
+
+        val actions =
+            GrokEditorMarkup.actions
+                .filter { it.kind != GrokEditorMarkup.Kind.SECTION }
+        val labels =
+            actions
+                .map { GrokEditorMarkup.label(it, UiText.language(this)) }
+                .toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle(
+                t(
+                    "Grok — произношение и подача",
+                    "Grok — wymowa i sposób czytania",
+                    "Grok — pronunciation and delivery"
+                )
+            )
+            .setItems(labels) { _, which ->
+                applyGrokEditorAction(actions[which])
+            }
+            .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
+            .show()
+    }
+
+    private fun applyGrokEditorAction(action: GrokEditorMarkup.Action) {
+        if (isPlaying) pauseSpeech()
+
+        try {
+            val current = editor.text.toString()
+            val start = editor.selectionStart.coerceAtLeast(0)
+            val end = editor.selectionEnd.coerceAtLeast(0)
+            val result =
+                when (action.kind) {
+                    GrokEditorMarkup.Kind.STRESS ->
+                        GrokEditorMarkup.addStress(current, start, end)
+                    GrokEditorMarkup.Kind.WRAP ->
+                        GrokEditorMarkup.wrapSelection(
+                            current,
+                            start,
+                            end,
+                            action.token
+                        )
+                    GrokEditorMarkup.Kind.INSERT ->
+                        GrokEditorMarkup.insertToken(
+                            current,
+                            start,
+                            end,
+                            action.token
+                        )
+                    GrokEditorMarkup.Kind.SECTION -> return
+                }
+
+            editor.setText(result.text)
+            editor.setSelection(
+                result.selectionStart.coerceIn(0, editor.text.length),
+                result.selectionEnd.coerceIn(0, editor.text.length)
+            )
+            editor.requestFocus()
+            scrollEditorToOffset(result.selectionEnd)
+
+            resultText.text =
+                when (action.kind) {
+                    GrokEditorMarkup.Kind.STRESS ->
+                        t(
+                            "Ударение поставлено. Нажмите «Слушать от курсора» для проверки.",
+                            "Akcent został ustawiony. Naciśnij „Czytaj od kursora”, aby sprawdzić.",
+                            "Stress mark added. Tap “Listen from cursor” to check it."
+                        )
+                    GrokEditorMarkup.Kind.WRAP ->
+                        "<${action.token}>…</${action.token}>"
+                    GrokEditorMarkup.Kind.INSERT -> action.token
+                    GrokEditorMarkup.Kind.SECTION -> ""
+                }
+        } catch (error: IllegalArgumentException) {
+            Toast.makeText(
+                this,
+                error.message ?: t("Неверное выделение", "Nieprawidłowe zaznaczenie", "Invalid selection"),
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     private fun highlight(index: Int) {
@@ -1380,14 +1582,18 @@ class ReaderActivity : Activity() {
             pauseSpeech()
             currentSegment = index
 
-            when {
-                engine == SettingsStore.ENGINE_OPENAI -> startOpenAiFrom(currentSegment)
-                engine == SettingsStore.ENGINE_XAI -> startXaiFrom(currentSegment)
-                engine == SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
-                engine == SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
-                engine == SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
-                engine == SettingsStore.ENGINE_SILERO -> startSileroFrom(currentSegment)
-                engine.startsWith("android:") -> startAndroidTts()
+            if (editMode) {
+                startOrResume()
+            } else {
+                when {
+                    engine == SettingsStore.ENGINE_OPENAI -> startOpenAiFrom(currentSegment)
+                    engine == SettingsStore.ENGINE_XAI -> startXaiFrom(currentSegment)
+                    engine == SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
+                    engine == SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
+                    engine == SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
+                    engine == SettingsStore.ENGINE_SILERO -> startSileroFrom(currentSegment)
+                    engine.startsWith("android:") -> startAndroidTts()
+                }
             }
         }
     }
@@ -1433,6 +1639,8 @@ class ReaderActivity : Activity() {
         voiceButton.text =
             voices.firstOrNull { it.id == voice }?.label?.take(20)
                 ?: voice.ifBlank { t("Голос", "Voice") }.take(20)
+
+        updateEditorToolVisibility()
     }
 
     private class ExportCancelledException : RuntimeException()
