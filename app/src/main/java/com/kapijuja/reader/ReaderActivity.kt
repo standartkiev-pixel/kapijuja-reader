@@ -505,7 +505,13 @@ class ReaderActivity : Activity() {
         val offset = layout.getOffsetForHorizontal(line, localX)
             .coerceIn(0, text.length)
 
-        val index = segments.indexOfFirst { offset < it.end }
+        val playbackOffset =
+            if (SettingsStore.engine(this) == SettingsStore.ENGINE_XAI) {
+                GrokEditorMarkup.playbackStartOffset(text, offset)
+            } else {
+                offset
+            }
+        val index = segments.indexOfFirst { playbackOffset < it.end }
             .let { if (it >= 0) it else segments.lastIndex }
 
         val wasPlaying = isPlaying
@@ -928,7 +934,11 @@ class ReaderActivity : Activity() {
         )
     }
 
-    private fun buildCloudChunk(startIndex: Int, maxChars: Int = 720): CloudChunk {
+    private fun buildCloudChunk(
+        startIndex: Int,
+        engine: String,
+        maxChars: Int = 720
+    ): CloudChunk {
         val start = startIndex.coerceIn(0, segments.lastIndex)
         var end = start
         val builder = StringBuilder()
@@ -941,13 +951,31 @@ class ReaderActivity : Activity() {
             }
 
             val extra = if (builder.isEmpty()) sentence.length else sentence.length + 1
-            if (builder.isNotEmpty() && builder.length + extra > maxChars) break
+            val grokTagOpen =
+                engine == SettingsStore.ENGINE_XAI &&
+                    GrokEditorMarkup.hasUnclosedWrappingTag(builder.toString())
+            if (
+                builder.isNotEmpty() &&
+                builder.length + extra > maxChars &&
+                !grokTagOpen
+            ) {
+                break
+            }
 
             if (builder.isNotEmpty()) builder.append(' ')
             builder.append(sentence)
             end = i
 
-            if (builder.length >= maxChars * 3 / 4) break
+            if (engine == SettingsStore.ENGINE_XAI) {
+                require(builder.length <= XaiTtsClient.MAX_REQUEST_CHARS) {
+                    "Grok-тег охватывает слишком длинный фрагмент. Разбейте его на несколько частей."
+                }
+            }
+
+            val canBreakHere =
+                engine != SettingsStore.ENGINE_XAI ||
+                    !GrokEditorMarkup.hasUnclosedWrappingTag(builder.toString())
+            if (builder.length >= maxChars * 3 / 4 && canBreakHere) break
         }
 
         if (builder.isEmpty()) {
@@ -961,7 +989,7 @@ class ReaderActivity : Activity() {
     private fun playCloudChunk(startIndex: Int, token: Int, engine: String) {
         if (token != generationToken || startIndex !in segments.indices) return
 
-        val chunk = buildCloudChunk(startIndex)
+        val chunk = buildCloudChunk(startIndex, engine)
         currentSegment = chunk.startSegment
         highlight(chunk.startSegment)
 
@@ -1161,7 +1189,7 @@ class ReaderActivity : Activity() {
             return
         }
 
-        val chunk = buildCloudChunk(startIndex)
+        val chunk = buildCloudChunk(startIndex, engine)
         Thread {
             try {
                 val bytes = synthesizeCloudChunk(engine = engine, text = chunk.spoken)
@@ -1416,7 +1444,13 @@ class ReaderActivity : Activity() {
         val cursor =
             maxOf(editor.selectionStart, editor.selectionEnd)
                 .coerceIn(0, text.length)
-        currentSegment = findSegmentForOffset(cursor)
+        val playbackOffset =
+            if (SettingsStore.engine(this) == SettingsStore.ENGINE_XAI) {
+                GrokEditorMarkup.playbackStartOffset(draft, cursor)
+            } else {
+                cursor
+            }
+        currentSegment = findSegmentForOffset(playbackOffset)
         openAiConfirmedHash = null
         xaiConfirmedHash = null
         resultText.text =
