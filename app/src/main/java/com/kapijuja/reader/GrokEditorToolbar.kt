@@ -5,7 +5,6 @@ import android.app.AlertDialog
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
 import android.widget.Toast
 
 /**
@@ -20,7 +19,7 @@ object GrokEditorToolbar {
     fun create(
         activity: Activity,
         editor: EditText,
-        resultText: TextView,
+        setResultText: (String) -> Unit,
         pauseIfPlaying: () -> Unit,
         scrollToOffset: (Int) -> Unit
     ): Button {
@@ -40,7 +39,7 @@ object GrokEditorToolbar {
             showActions(
                 activity = activity,
                 editor = editor,
-                resultText = resultText,
+                setResultText = setResultText,
                 pauseIfPlaying = pauseIfPlaying,
                 scrollToOffset = scrollToOffset
             )
@@ -64,7 +63,7 @@ object GrokEditorToolbar {
     private fun showActions(
         activity: Activity,
         editor: EditText,
-        resultText: TextView,
+        setResultText: (String) -> Unit,
         pauseIfPlaying: () -> Unit,
         scrollToOffset: (Int) -> Unit
     ) {
@@ -89,7 +88,7 @@ object GrokEditorToolbar {
                 applyAction(
                     activity = activity,
                     editor = editor,
-                    resultText = resultText,
+                    setResultText = setResultText,
                     action = actions[which],
                     pauseIfPlaying = pauseIfPlaying,
                     scrollToOffset = scrollToOffset
@@ -105,7 +104,7 @@ object GrokEditorToolbar {
     private fun applyAction(
         activity: Activity,
         editor: EditText,
-        resultText: TextView,
+        setResultText: (String) -> Unit,
         action: GrokEditorMarkup.Action,
         pauseIfPlaying: () -> Unit,
         scrollToOffset: (Int) -> Unit
@@ -145,7 +144,7 @@ object GrokEditorToolbar {
             editor.requestFocus()
             scrollToOffset(result.selectionEnd)
 
-            resultText.text =
+            setResultText(
                 when (action.kind) {
                     GrokEditorMarkup.Kind.STRESS ->
                         tr(
@@ -159,6 +158,7 @@ object GrokEditorToolbar {
                     GrokEditorMarkup.Kind.INSERT -> action.token
                     GrokEditorMarkup.Kind.SECTION -> ""
                 }
+            )
         } catch (error: IllegalArgumentException) {
             Toast.makeText(
                 activity,
