@@ -3,11 +3,27 @@ package com.kapijuja.reader
 /**
  * Pure text transformations used by the Grok-only editor toolbar.
  *
- * Keep this Android-free so stress placement and speech-tag insertion can be
- * unit-tested without an Activity or device.
+ * Keep this Android-free so stress placement, speech-tag insertion and chunk
+ * boundaries can be unit-tested without an Activity or device.
  */
 object GrokEditorMarkup {
     const val COMBINING_ACUTE = '\u0301'
+
+    val WRAPPING_TAGS: Set<String> =
+        setOf(
+            "soft",
+            "whisper",
+            "loud",
+            "build-intensity",
+            "decrease-intensity",
+            "higher-pitch",
+            "lower-pitch",
+            "slow",
+            "fast",
+            "sing-song",
+            "singing",
+            "emphasis"
+        )
 
     data class EditResult(
         val text: String,
@@ -125,7 +141,7 @@ object GrokEditorMarkup {
         val lo = minOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         val hi = maxOf(selectionStart, selectionEnd).coerceIn(0, text.length)
         require(lo < hi) { "Сначала выделите слово или фрагмент текста." }
-        require(tag.matches(Regex("[a-z-]+"))) { "Некорректный Grok-тег." }
+        require(tag in WRAPPING_TAGS) { "Некорректный Grok-тег." }
 
         val open = "<$tag>"
         val close = "</$tag>"
@@ -164,12 +180,143 @@ object GrokEditorMarkup {
         return EditResult(updated, caret, caret)
     }
 
+    /**
+     * If the caret sits inside one or more Grok wrapping tags, move the
+     * playback start back to the outermost currently-open tag. This keeps the
+     * style instruction in the TTS request when listening from the editor.
+     */
+    fun playbackStartOffset(text: String, cursor: Int): Int {
+        val safeCursor = cursor.coerceIn(0, text.length)
+        val stack = mutableListOf<TagFrame>()
+        scanTags(text, 0, safeCursor, stack)
+        return stack.firstOrNull()?.start ?: safeCursor
+    }
+
+    fun hasUnclosedWrappingTag(value: String): Boolean {
+        val stack = mutableListOf<TagFrame>()
+        scanTags(value, 0, value.length, stack)
+        return stack.isNotEmpty()
+    }
+
+    /**
+     * Extend a preferred chunk end until all Grok wrapping tags opened inside
+     * the chunk have been closed. The caller must begin at a balanced boundary.
+     */
+    fun balancedChunkEnd(
+        text: String,
+        start: Int,
+        preferredEnd: Int,
+        hardEnd: Int
+    ): Int {
+        val safeStart = start.coerceIn(0, text.length)
+        val safeHard = hardEnd.coerceIn(safeStart, text.length)
+        val safePreferred = preferredEnd.coerceIn(safeStart, safeHard)
+        val stack = mutableListOf<TagFrame>()
+
+        var index = safeStart
+        while (index < safeHard) {
+            val parsed = parseTagAt(text, index)
+            if (parsed != null) {
+                updateStack(stack, parsed)
+                index = parsed.endExclusive
+                if (index >= safePreferred && stack.isEmpty()) {
+                    if (index >= text.length || isNaturalBoundary(text[index - 1])) {
+                        return index
+                    }
+                }
+                continue
+            }
+
+            index += 1
+            if (
+                index >= safePreferred &&
+                stack.isEmpty() &&
+                (index == text.length || isNaturalBoundary(text[index - 1]))
+            ) {
+                return index
+            }
+        }
+
+        if (safeHard == text.length && stack.isEmpty()) return safeHard
+        require(stack.isEmpty()) {
+            "Grok-тег охватывает слишком длинный фрагмент. Разбейте выделение на несколько более коротких частей."
+        }
+        return safeHard
+    }
+
     fun label(action: Action, language: String): String =
         when (language) {
-            SettingsStore.UI_LANGUAGE_RU -> action.labelRu
-            SettingsStore.UI_LANGUAGE_PL -> action.labelPl
+            "ru" -> action.labelRu
+            "pl" -> action.labelPl
             else -> action.labelEn
         }
+
+    private data class TagFrame(
+        val name: String,
+        val start: Int
+    )
+
+    private data class ParsedTag(
+        val name: String,
+        val closing: Boolean,
+        val start: Int,
+        val endExclusive: Int
+    )
+
+    private fun scanTags(
+        text: String,
+        start: Int,
+        end: Int,
+        stack: MutableList<TagFrame>
+    ) {
+        var index = start.coerceAtLeast(0)
+        val limit = end.coerceIn(index, text.length)
+        while (index < limit) {
+            val parsed = parseTagAt(text, index)
+            if (parsed != null && parsed.endExclusive <= limit) {
+                updateStack(stack, parsed)
+                index = parsed.endExclusive
+            } else {
+                index += 1
+            }
+        }
+    }
+
+    private fun parseTagAt(text: String, index: Int): ParsedTag? {
+        if (index !in text.indices || text[index] != '<') return null
+        val close = text.indexOf('>', index + 1)
+        if (close < 0) return null
+
+        val raw = text.substring(index + 1, close).trim()
+        val closing = raw.startsWith('/')
+        val name = if (closing) raw.drop(1).trim() else raw
+        if (name !in WRAPPING_TAGS) return null
+
+        return ParsedTag(
+            name = name,
+            closing = closing,
+            start = index,
+            endExclusive = close + 1
+        )
+    }
+
+    private fun updateStack(
+        stack: MutableList<TagFrame>,
+        parsed: ParsedTag
+    ) {
+        if (!parsed.closing) {
+            stack += TagFrame(parsed.name, parsed.start)
+            return
+        }
+
+        val matching = stack.indexOfLast { it.name == parsed.name }
+        if (matching >= 0) {
+            while (stack.lastIndex >= matching) stack.removeAt(stack.lastIndex)
+        }
+    }
+
+    private fun isNaturalBoundary(ch: Char): Boolean =
+        ch.isWhitespace() || ch in charArrayOf('.', '!', '?', ',', ';', ':')
 
     private fun vowelBeforeCaret(text: String, caret: Int): Int {
         if (caret <= 0 || text.isEmpty()) return -1
