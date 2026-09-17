@@ -11,7 +11,11 @@ import java.net.UnknownHostException
 object XaiTtsClient {
     private const val ENDPOINT = "https://api.x.ai/v1/tts"
     private const val VOICES_ENDPOINT = "https://api.x.ai/v1/tts/voices"
-    private const val MAX_REQUEST_CHARS = 15_000
+
+    // xAI unary/server-streamed TTS currently accepts up to 60,000 characters.
+    // Keep export chunks much smaller for responsiveness, but expose the hard
+    // limit so Reader chunk planning can avoid cutting an open wrapping tag.
+    const val MAX_REQUEST_CHARS = 60_000
     private const val DEFAULT_EXPORT_CHARS = 12_000
     private const val PRICE_USD_PER_MILLION_CHARS = 15.0
 
@@ -176,7 +180,9 @@ object XaiTtsClient {
         var cursor = 0
 
         while (cursor < text.length) {
-            var end = minOf(cursor + maxChars, text.length)
+            val hardEnd = minOf(cursor + MAX_REQUEST_CHARS, text.length)
+            var end = minOf(cursor + maxChars, hardEnd)
+
             if (end < text.length) {
                 val sentence =
                     text.lastIndexOfAny(
@@ -189,6 +195,18 @@ object XaiTtsClient {
                     space > cursor + maxChars / 2 -> space + 1
                     else -> end
                 }
+            }
+
+            end =
+                GrokEditorMarkup.balancedChunkEnd(
+                    text = text,
+                    start = cursor,
+                    preferredEnd = end,
+                    hardEnd = hardEnd
+                )
+
+            require(end > cursor) {
+                "xAI TTS: не удалось безопасно разбить текст на фрагменты"
             }
 
             result += text.substring(cursor, end).trim()

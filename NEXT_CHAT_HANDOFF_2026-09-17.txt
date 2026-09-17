@@ -1,0 +1,115 @@
+KAPIJUJA READER — CURRENT HANDOFF — 2026-09-17
+
+Repository: standartkiev-pixel/kapijuja-reader
+Default branch: main
+
+START HERE
+1. AI_CONTEXT_INDEX.md
+2. AI_DEVELOPMENT_RULES.md
+3. this file
+4. only the subsystem context needed for the task
+
+CURRENT USER-FACING STATE
+
+TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini, xAI Grok and experimental local Silero.
+
+xAI Grok TTS is integrated for playback and MP3 export. The current REST unary limit is 60,000 characters. Grok paid playback does not speculative-prefetch the next chunk.
+
+NEW EDITOR / PRONUNCIATION WORK
+
+The Reader editor is now also a live proofreading/listening screen.
+
+- Entering edit mode no longer jumps to the end of a long document. It opens around the current playback/text position.
+- The play button remains active in edit mode and reads the current unsaved editor snapshot starting at the cursor.
+- The user may edit while playback is active, then pause/restart to audition the edited wording immediately.
+- Saving the edited text keeps the position near the cursor instead of resetting to sentence 1.
+- Save-text and Save-MP3/WAV controls are hidden while editing and restored after leaving edit mode.
+- Engine and voice controls remain accessible.
+
+GROK-ONLY EDITOR TOOLS
+
+When the selected engine is xAI Grok and edit mode is active, a compact button/dropdown appears: Grok stress / delivery. It is hidden for every other engine.
+
+The first action is stress placement. Implementation uses Unicode combining acute U+0301.
+
+Stress UX:
+- place the caret immediately AFTER the desired vowel, or select exactly one vowel;
+- choose the first Stress action;
+- the helper verifies the target is a vowel;
+- any existing combining acute stress mark in the SAME word is removed;
+- the new acute mark is inserted after the selected vowel;
+- stress marks in other words are preserved.
+
+No pronunciation dictionary UI is implemented. This is intentional: identical spelling can need different stress in different contexts, so correction is per occurrence.
+
+GROK SPEECH TAGS
+
+GrokEditorMarkup.kt contains the documented wrapping and inline tags used by the compact dropdown.
+
+Wrapping tags:
+soft, whisper, loud, build-intensity, decrease-intensity, higher-pitch, lower-pitch, slow, fast, sing-song, singing, emphasis.
+
+Inline events:
+pause, long-pause, hum-tune, laugh, chuckle, giggle, cry, tsk, tongue-click, lip-smack, breath, inhale, exhale, sigh.
+
+For a wrapping action, select a word/phrase then choose the action; the tool wraps the selection with the matching opening/closing tag. Inline events are inserted at the cursor.
+
+TAG-SAFE PLAYBACK / EXPORT
+
+Grok wrapping tags must not be cut in half by text chunking.
+
+- If playback begins inside a styled Grok span, playbackStartOffset() moves the effective starting position back to the outermost open Grok tag so the request contains its style instruction.
+- Reader cloud playback continues a Grok chunk past the usual short chunk target until open wrapping tags close, subject to the provider hard limit.
+- XaiTtsClient.splitForApi() uses balancedChunkEnd() so MP3 export also keeps wrapping tags balanced.
+
+FILES
+
+GrokEditorMarkup.kt
+- pure text logic;
+- stress insertion/replacement;
+- supported Grok action catalog;
+- tag parsing/balance helpers;
+- playback-start adjustment;
+- safe chunk-end calculation.
+
+GrokEditorToolbar.kt
+- Android UI adapter for the compact Grok-only editor control;
+- shows the dropdown;
+- applies GrokEditorMarkup transformations to EditText;
+- keeps provider-specific editor UI out of ReaderActivity.
+
+ReaderActivity.kt
+- only coordinates edit-mode playback snapshot, current cursor/segment and toolbar visibility;
+- do not move Grok text transformations back into this Activity.
+
+XaiTtsClient.kt
+- official xAI REST client;
+- hard request limit updated to 60,000 chars;
+- tag-aware export chunking.
+
+Tests:
+app/src/test/java/com/kapijuja/reader/GrokEditorMarkupTest.kt
+covers stress replacement, selected vowel, invalid consonant, preserving stress in another word, already-stressed target, wrapping tags, inline insertion, playback start inside a tag and balanced nested chunks.
+
+ARCHITECTURE
+
+ReaderActivity is still a legacy migration target. Historical size was ~105.7 KB. After xAI dispatch extraction it was ~88.6 KB. The new edit-mode coordination raises it to about 94 KB, while Grok-specific transformation/UI logic is kept in separate files. Continue extracting cohesive editor/session responsibilities instead of growing the Activity indefinitely.
+
+SettingsActivity remains about 46.8 KB and should not grow for unrelated work.
+
+VALIDATION
+
+Feature CI is configured to run:
+- scripts/check_source_size.py
+- :app:testDebugUnitTest
+- :app:compileDebugKotlin
+
+Before merging future changes, require those checks to be green. main CI then builds/verifies/signs the APK and publishes the latest test APK release.
+
+NEXT GOOD STEPS
+
+1. Device-test edit-mode listening on a long Russian text while moving the cursor and correcting stress.
+2. A/B test explicit combining acute stress with several Grok voices.
+3. Check whether Android EditText selection/caret stays comfortable when nested Grok tags are used repeatedly.
+4. If editor functionality grows again, extract editor-session state/cursor coordination from ReaderActivity into its own component.
+5. Do not add dictionary-based pronunciation unless the user explicitly changes this product decision.
