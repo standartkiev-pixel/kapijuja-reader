@@ -81,6 +81,7 @@ class ReaderActivity : Activity() {
     private var openAiConfirmedHash: Int? = null
     private var xaiConfirmedHash: Int? = null
     private var openAiRunAudioMillis = 0L
+    private var playbackStartOffsetOverride: Int? = null
     private var pendingExportEngine: String? = null
     @Volatile private var exportCancelled = false
     @Volatile private var exportInProgress = false
@@ -127,7 +128,19 @@ class ReaderActivity : Activity() {
         PlaybackBridge.controller = playbackController
         ExportBridge.controller = exportController
         builtLanguage = UiText.language(this)
-        loadInput()
+        try {
+            loadInput()
+            ReaderLimits.requireDisplaySafe(text)
+        } catch (error: IllegalArgumentException) {
+            title = t("Слишком большой документ", "Zbyt duży dokument", "Document too large")
+            source = ""
+            libraryId = null
+            text = error.message ?: t(
+                "Документ не загружен из-за ограничения размера.",
+                "Dokument nie został wczytany z powodu limitu rozmiaru.",
+                "The document was not loaded because it exceeds the safety limit."
+            )
+        }
         segments = segmentText(text)
         buildScreen()
     }
@@ -248,6 +261,7 @@ class ReaderActivity : Activity() {
 
         scroll = ScrollView(this).apply {
             isFillViewport = true
+            isVerticalScrollBarEnabled = false
         }
 
         contentFrame = FrameLayout(this)
@@ -257,7 +271,7 @@ class ReaderActivity : Activity() {
             textSize = 20f
             setTextColor(KapijujaUiTheme.SILVER)
             setLineSpacing(dp(5).toFloat(), 1.08f)
-            setPadding(dp(10), dp(12), dp(10), dp(28))
+            setPadding(dp(10), dp(12), dp(30), dp(28))
             setTextIsSelectable(true)
         }
         installTapStart()
@@ -270,6 +284,7 @@ class ReaderActivity : Activity() {
             setLineSpacing(dp(5).toFloat(), 1.08f)
         }
         KapijujaUiTheme.input(this, editor)
+        editor.setPadding(editor.paddingLeft, editor.paddingTop, dp(30), editor.paddingBottom)
 
         editorToolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -286,7 +301,7 @@ class ReaderActivity : Activity() {
         }
 
         editorListenButton = Button(this).apply {
-            text = "▶ ‖"
+            text = "▶"
             textSize = 15f
             contentDescription =
                 t("Слушать или пауза", "Czytaj lub pauza", "Listen or pause")
@@ -370,8 +385,23 @@ class ReaderActivity : Activity() {
             )
         )
         scroll.addView(contentFrame)
-        root.addView(
+        val scrollHost = FrameLayout(this)
+        scrollHost.addView(
             scroll,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        val fastScroller = ReaderFastScroller(this).apply { attachTo(scroll) }
+        scrollHost.addView(
+            fastScroller,
+            FrameLayout.LayoutParams(dp(28), ViewGroup.LayoutParams.MATCH_PARENT).apply {
+                gravity = Gravity.END
+            }
+        )
+        root.addView(
+            scrollHost,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 0,
@@ -382,7 +412,7 @@ class ReaderActivity : Activity() {
         player = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.VISIBLE
-            setPadding(dp(10), dp(9), dp(10), dp(9))
+            setPadding(dp(7), dp(5), dp(7), dp(5))
             background = KapijujaUiTheme.panel(
                 this@ReaderActivity,
                 KapijujaUiTheme.PANEL_DARK,
@@ -410,7 +440,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, playPause, primary = true)
         controls.addView(
             playPause,
-            LinearLayout.LayoutParams(0, dp(54), 1f).apply {
+            LinearLayout.LayoutParams(0, dp(46), 1f).apply {
                 marginEnd = dp(7)
             }
         )
@@ -422,7 +452,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, speedButton)
         controls.addView(
             speedButton,
-            LinearLayout.LayoutParams(0, dp(54), 0.65f).apply {
+            LinearLayout.LayoutParams(0, dp(46), 0.65f).apply {
                 marginEnd = dp(7)
             }
         )
@@ -434,13 +464,13 @@ class ReaderActivity : Activity() {
             }
         }
         KapijujaUiTheme.button(this, editButton)
-        controls.addView(editButton, LinearLayout.LayoutParams(0, dp(54), 1.15f))
+        controls.addView(editButton, LinearLayout.LayoutParams(0, dp(46), 1.15f))
         player.addView(controls)
 
         val voiceRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(7), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         }
 
         engineButton = Button(this).apply {
@@ -453,7 +483,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, engineButton)
         voiceRow.addView(
             engineButton,
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+            LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                 marginEnd = dp(7)
             }
         )
@@ -466,7 +496,7 @@ class ReaderActivity : Activity() {
             }
         }
         KapijujaUiTheme.button(this, voiceButton)
-        voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(52), 1f))
+        voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(42), 1f))
         player.addView(voiceRow)
 
         exportProgress = ProgressBar(
@@ -500,7 +530,7 @@ class ReaderActivity : Activity() {
         saveRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(7), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         }
 
         val saveText = Button(this).apply {
@@ -511,7 +541,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, saveText)
         saveRow.addView(
             saveText,
-            LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+            LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                 marginEnd = dp(7)
             }
         )
@@ -531,7 +561,7 @@ class ReaderActivity : Activity() {
             saveAudioButton,
             LinearLayout.LayoutParams(
                 0,
-                dp(50),
+                dp(42),
                 1f
             )
         )
@@ -596,6 +626,7 @@ class ReaderActivity : Activity() {
         if (wasPlaying) pauseSpeech()
 
         currentSegment = index
+        playbackStartOffsetOverride = playbackOffset
         player.visibility = View.VISIBLE
         highlight(index)
         listenButton.text = if (wasPlaying) "Готовится…" else "Слушать отсюда"
@@ -624,7 +655,12 @@ class ReaderActivity : Activity() {
         if (!editMode && libraryId == null) {
             libraryId = LibraryStore.add(this, title, source, text)
         }
-        player.visibility = View.VISIBLE
+        if (editMode) {
+            player.visibility = View.GONE
+            editorToolbar.visibility = View.VISIBLE
+        } else {
+            player.visibility = View.VISIBLE
+        }
 
         when (val engine = SettingsStore.engine(this)) {
             SettingsStore.ENGINE_OPENAI -> startOpenAiWithGuard()
@@ -663,6 +699,7 @@ class ReaderActivity : Activity() {
 
     private fun startAndroidTts() {
         if (!ttsReady) {
+            showPlaybackPreparingUi()
             initAndroidTts { speakAndroidFrom(currentSegment) }
         } else {
             speakAndroidFrom(currentSegment)
@@ -721,6 +758,7 @@ class ReaderActivity : Activity() {
                     this,
                     "Android TTS init failed: engine=$engineId status=$status"
                 )
+                stopPlaybackBusyIndicators()
                 Toast.makeText(
                     this,
                     t(
@@ -754,7 +792,7 @@ class ReaderActivity : Activity() {
                     mainHandler.post {
                         currentSegment = index
                         isPlaying = true
-                        playPause.text = t("Пауза", "Pause")
+                        showPlaybackPlayingUi()
                         listenButton.text = "Читается"
                         highlight(index)
                     }
@@ -770,6 +808,8 @@ class ReaderActivity : Activity() {
                         mainHandler.post {
                             isPlaying = false
                             currentSegment = 0
+                            playbackStartOffsetOverride = null
+                            stopPlaybackBusyIndicators()
                             playPause.text = t("Сначала", "Start over")
                             listenButton.text = "Слушать"
                             resultText.text = t("Чтение завершено.", "Reading complete.")
@@ -786,6 +826,7 @@ class ReaderActivity : Activity() {
                     }
                     mainHandler.post {
                         isPlaying = false
+                        stopPlaybackBusyIndicators()
                         playPause.text = t("Продолжить", "Resume")
                         listenButton.text = "Слушать"
                         resultText.text = t("Ошибка Android TTS.", "Android TTS error.")
@@ -804,7 +845,7 @@ class ReaderActivity : Activity() {
         for (i in start..segments.lastIndex) {
             val mode = if (i == start) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             tts?.speak(
-                segments[i].spoken,
+                spokenSegmentForPlayback(i, start),
                 mode,
                 null,
                 "seg_$i"
@@ -812,7 +853,7 @@ class ReaderActivity : Activity() {
         }
 
         isPlaying = true
-        playPause.text = t("Пауза", "Pause")
+        showPlaybackPlayingUi()
         listenButton.text = "Читается"
         resultText.text = ""
         syncPlaybackNotification()
@@ -900,12 +941,15 @@ class ReaderActivity : Activity() {
             .show()
     }
 
-    private fun remainingText(): String =
-        if (currentSegment in segments.indices) {
+    private fun remainingText(): String {
+        val exact = playbackStartOffsetOverride?.coerceIn(0, text.length)
+        if (exact != null) return text.substring(exact)
+        return if (currentSegment in segments.indices) {
             text.substring(segments[currentSegment].start)
         } else {
             text
         }
+    }
 
     private fun showMissingKey(title: String, message: String) {
         AlertDialog.Builder(this)
@@ -981,7 +1025,7 @@ class ReaderActivity : Activity() {
 
         val token = generationToken
         isPlaying = true
-        playPause.text = t("Пауза", "Pause")
+        showPlaybackPreparingUi()
         listenButton.text = "Готовится…"
         syncPlaybackNotification()
 
@@ -1012,6 +1056,23 @@ class ReaderActivity : Activity() {
         )
     }
 
+    private fun spokenSegmentForPlayback(index: Int, startIndex: Int): String {
+        val segment = segments[index]
+        val exact = playbackStartOffsetOverride
+        val raw =
+            if (
+                index == startIndex &&
+                exact != null &&
+                exact >= segment.start &&
+                exact < segment.end
+            ) {
+                text.substring(exact, segment.end)
+            } else {
+                segment.spoken
+            }
+        return raw.replace(Regex("\\s+"), " ").trim()
+    }
+
     private fun buildCloudChunk(
         startIndex: Int,
         engine: String,
@@ -1022,7 +1083,7 @@ class ReaderActivity : Activity() {
         val builder = StringBuilder()
 
         for (i in start..segments.lastIndex) {
-            val sentence = segments[i].spoken.replace(Regex("\\s+"), " ").trim()
+            val sentence = spokenSegmentForPlayback(i, start)
             if (sentence.isBlank()) {
                 end = i
                 continue
@@ -1112,6 +1173,7 @@ class ReaderActivity : Activity() {
                 mainHandler.post {
                     if (token != generationToken) return@post
                     isPlaying = false
+                    stopPlaybackBusyIndicators()
                     playPause.text = t("Продолжить", "Wznów", "Resume")
                     listenButton.text = "Слушать"
                     val message = UiText.localizeMessage(
@@ -1177,6 +1239,8 @@ class ReaderActivity : Activity() {
                     if (next > segments.lastIndex) {
                         this@ReaderActivity.isPlaying = false
                         currentSegment = 0
+                        playbackStartOffsetOverride = null
+                        stopPlaybackBusyIndicators()
                         playPause.text = t("Сначала", "Start over")
                         listenButton.text = "Слушать"
                         resultText.text = completionText(engine)
@@ -1196,6 +1260,7 @@ class ReaderActivity : Activity() {
                     if (activeTempFile == file) activeTempFile = null
                     file.delete()
                     this@ReaderActivity.isPlaying = false
+                    stopPlaybackBusyIndicators()
                     playPause.text = "Продолжить"
                     listenButton.text = "Слушать"
                     resultText.text = t("Ошибка воспроизведения.", "Błąd odtwarzania.", "Playback error.")
@@ -1207,6 +1272,7 @@ class ReaderActivity : Activity() {
                     openAiRunAudioMillis += duration.toLong()
                 }
                 start()
+                showPlaybackPlayingUi()
                 scheduleChunkHighlights(chunk = chunk, durationMs = duration.toLong(), token = token)
             }
 
@@ -1369,6 +1435,27 @@ class ReaderActivity : Activity() {
     private fun estimatedOpenAiRunCost(): Double =
         openAiRunAudioMillis / 60_000.0 * 0.013
 
+    private fun showPlaybackPreparingUi() {
+        if (::playPause.isInitialized) PlaybackBusyIndicator.start(playPause)
+        if (editMode && ::editorListenButton.isInitialized) {
+            PlaybackBusyIndicator.start(editorListenButton)
+        }
+    }
+
+    private fun showPlaybackPlayingUi() {
+        if (::playPause.isInitialized) {
+            PlaybackBusyIndicator.stop(playPause, t("Пауза", "Pause"))
+        }
+        if (::editorListenButton.isInitialized) {
+            PlaybackBusyIndicator.stop(editorListenButton, if (editMode) "‖" else "▶")
+        }
+    }
+
+    private fun stopPlaybackBusyIndicators() {
+        if (::playPause.isInitialized) PlaybackBusyIndicator.stop(playPause, null)
+        if (::editorListenButton.isInitialized) PlaybackBusyIndicator.stop(editorListenButton, "▶")
+    }
+
     private fun pauseSpeech() {
         val wasPlaying = isPlaying
         generationToken += 1
@@ -1376,6 +1463,7 @@ class ReaderActivity : Activity() {
         stopMediaOnly()
         clearCloudPrefetch()
         isPlaying = false
+        stopPlaybackBusyIndicators()
         if (wasPlaying) syncPlaybackNotification()
 
         if (::playPause.isInitialized) {
@@ -1474,6 +1562,7 @@ class ReaderActivity : Activity() {
         text = updated
         segments = segmentText(text)
         currentSegment = findSegmentForOffset(savedOffset)
+        playbackStartOffsetOverride = null
         openAiConfirmedHash = null
         xaiConfirmedHash = null
 
@@ -1511,6 +1600,7 @@ class ReaderActivity : Activity() {
 
     private fun prepareEditorPlaybackSnapshot(): Boolean {
         val draft = editor.text.toString()
+        val draftChanged = draft != text
         if (draft.isBlank()) {
             Toast.makeText(
                 this,
@@ -1524,9 +1614,14 @@ class ReaderActivity : Activity() {
         segments = segmentText(text)
         if (segments.isEmpty()) return false
 
+        val selectionStart = editor.selectionStart.coerceIn(0, text.length)
+        val selectionEnd = editor.selectionEnd.coerceIn(0, text.length)
         val cursor =
-            maxOf(editor.selectionStart, editor.selectionEnd)
-                .coerceIn(0, text.length)
+            if (selectionStart != selectionEnd) {
+                minOf(selectionStart, selectionEnd)
+            } else {
+                selectionStart
+            }
         val playbackOffset =
             if (SettingsStore.engine(this) == SettingsStore.ENGINE_XAI) {
                 GrokEditorMarkup.playbackStartOffset(draft, cursor)
@@ -1534,8 +1629,11 @@ class ReaderActivity : Activity() {
                 cursor
             }
         currentSegment = findSegmentForOffset(playbackOffset)
-        openAiConfirmedHash = null
-        xaiConfirmedHash = null
+        playbackStartOffsetOverride = playbackOffset
+        if (draftChanged) {
+            openAiConfirmedHash = null
+            xaiConfirmedHash = null
+        }
         resultText.text =
             t(
                 "Редактор • чтение от курсора",
