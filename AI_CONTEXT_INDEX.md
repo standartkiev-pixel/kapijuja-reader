@@ -8,7 +8,7 @@ The purpose is progressive context loading: understand the task first, then open
 
 1. `AI_CONTEXT_INDEX.md` — this file.
 2. `AI_DEVELOPMENT_RULES.md` — architecture, file-size and safe-edit rules.
-3. `NEXT_CHAT_HANDOFF_2026-09-15.txt` — current short handoff.
+3. `NEXT_CHAT_HANDOFF_2026-09-17.txt` — current short handoff.
 
 `PROJECT_HANDOFF.md` is a long historical/implementation record. Search it for the topic you need; do not load it in full by default.
 
@@ -17,8 +17,10 @@ The purpose is progressive context loading: understand the task first, then open
 ### TTS engine / provider work
 Read `docs/ai/TTS_CONTEXT.md`, then only the provider client being changed plus `CloudTtsDispatcher.kt` and `SettingsStore.kt` when routing/configuration changes. Open the relevant region of `SettingsActivity.kt` only if UI/credentials/voice selection must change.
 
-### Reader playback / position / highlighting / export
-Read `docs/ai/READER_CONTEXT.md`. Search `ReaderActivity.kt` for the exact responsibility before opening a range. Prefer existing bridge/service/client/dispatcher files over adding more code to `ReaderActivity.kt`.
+For xAI Grok stress/pronunciation/speech-tag editing, start with `GrokEditorMarkup.kt` and `GrokEditorToolbar.kt`; do not preload the whole Reader Activity.
+
+### Reader playback / edit-mode listening / position / highlighting / export
+Read `docs/ai/READER_CONTEXT.md`. Search `ReaderActivity.kt` for the exact responsibility before opening a range. Prefer existing bridge/service/client/dispatcher/editor files over adding more code to `ReaderActivity.kt`.
 
 ### Settings / provider configuration / library retention
 Read `docs/ai/SETTINGS_CONTEXT.md`. Search `SettingsActivity.kt` and open only the relevant region. Provider connection checks are routed through `ProviderConnectionTester.kt`. Prefer extracting cohesive settings components instead of extending the monolith.
@@ -33,7 +35,7 @@ Start with `SileroRuntime.kt` and `docs/ai/TTS_CONTEXT.md`. Then inspect only th
 
 Current migration targets:
 
-- `ReaderActivity.kt` — historically about 106 KB; after the xAI/cloud-dispatch extraction it is about 89 KB.
+- `ReaderActivity.kt` — historically about 106 KB; after cloud dispatch extraction and the Grok editor work it is about 94 KB. Grok-specific text/UI logic is already split into dedicated files; extract editor session coordination next if this area grows again.
 - `SettingsActivity.kt` — historically about 48 KB; after provider-test extraction it is about 47 KB.
 
 Never rewrite either file wholesale for a local change. Search first, fetch/read only the necessary line range, and prefer a small extraction if the change would make the file grow.
