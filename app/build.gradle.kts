@@ -11,8 +11,8 @@ android {
         applicationId = "com.kapijuja.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8"
+        versionCode = 10
+        versionName = "0.1.9"
 
         // Experimental Silero/PyTorch build: the current test device and modern
         // Android phones are arm64. Keeping one ABI avoids multiplying the

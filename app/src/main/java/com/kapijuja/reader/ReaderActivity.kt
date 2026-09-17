@@ -46,7 +46,11 @@ class ReaderActivity : Activity() {
     private lateinit var speedButton: Button
     private lateinit var saveAudioButton: Button
     private lateinit var saveRow: LinearLayout
+    private lateinit var editorToolbar: LinearLayout
+    private lateinit var editorListenButton: Button
+    private lateinit var grokStressButton: Button
     private lateinit var grokEditToolsButton: Button
+    private var sourceView: TextView? = null
     private lateinit var exportProgress: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var resultText: TextView
@@ -175,7 +179,7 @@ class ReaderActivity : Activity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundResource(R.drawable.kapijuja_screen_bg)
-            setPadding(dp(14), dp(8), dp(14), dp(10))
+            setPadding(dp(10), dp(6), dp(10), dp(6))
         }
         KapijujaUiTheme.applySafeArea(root)
 
@@ -186,18 +190,23 @@ class ReaderActivity : Activity() {
 
         val back = Button(this).apply {
             text = "‹"
-            textSize = 30f
+            textSize = 24f
+            contentDescription = t("Назад", "Wstecz", "Back")
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
             setOnClickListener { finish() }
         }
         KapijujaUiTheme.button(this, back)
-        top.addView(back, LinearLayout.LayoutParams(dp(58), dp(54)))
+        top.addView(back, LinearLayout.LayoutParams(dp(46), dp(44)))
 
         val heading = TextView(this).apply {
             text = title
-            textSize = 20f
-            maxLines = 2
+            textSize = 18f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(dp(12), 0, dp(8), 0)
+            setPadding(dp(9), 0, dp(6), 0)
         }
         KapijujaUiTheme.title(heading)
         top.addView(
@@ -206,15 +215,19 @@ class ReaderActivity : Activity() {
         )
 
         val settings = Button(this).apply {
-            text = t("⚙ Настройки", "⚙ Settings")
-            textSize = 13f
+            text = "⚙"
+            textSize = 20f
+            contentDescription = t("Настройки", "Ustawienia", "Settings")
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
             setOnClickListener {
                 pauseSpeech()
                 startActivity(Intent(this@ReaderActivity, SettingsActivity::class.java))
             }
         }
         KapijujaUiTheme.button(this, settings)
-        top.addView(settings, LinearLayout.LayoutParams(dp(120), dp(52)))
+        top.addView(settings, LinearLayout.LayoutParams(dp(46), dp(44)))
         root.addView(top)
 
         listenButton = Button(this).apply {
@@ -222,14 +235,15 @@ class ReaderActivity : Activity() {
         }
 
         if (source.isNotBlank()) {
-            val sourceView = TextView(this).apply {
+            val sourceLabel = TextView(this).apply {
                 text = source
                 textSize = 12f
                 maxLines = 1
-                setPadding(dp(6), dp(5), dp(6), dp(5))
+                setPadding(dp(4), dp(2), dp(4), dp(2))
             }
-            KapijujaUiTheme.secondary(sourceView)
-            root.addView(sourceView)
+            KapijujaUiTheme.secondary(sourceLabel)
+            sourceView = sourceLabel
+            root.addView(sourceLabel)
         }
 
         scroll = ScrollView(this).apply {
@@ -252,10 +266,94 @@ class ReaderActivity : Activity() {
             visibility = View.GONE
             textSize = 20f
             gravity = Gravity.TOP
-            minLines = 14
+            minLines = 6
             setLineSpacing(dp(5).toFloat(), 1.08f)
         }
         KapijujaUiTheme.input(this, editor)
+
+        editorToolbar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(dp(4), dp(3), dp(4), dp(3))
+            background = KapijujaUiTheme.panel(
+                this@ReaderActivity,
+                KapijujaUiTheme.PANEL_DARK,
+                KapijujaUiTheme.BLUE,
+                1,
+                12
+            )
+        }
+
+        editorListenButton = Button(this).apply {
+            text = "▶ ‖"
+            textSize = 15f
+            contentDescription =
+                t("Слушать или пауза", "Czytaj lub pauza", "Listen or pause")
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            isFocusable = false
+            isFocusableInTouchMode = false
+            setOnClickListener {
+                if (isPlaying) pauseSpeech() else startOrResume()
+            }
+        }
+        KapijujaUiTheme.button(this, editorListenButton, primary = true)
+        editorToolbar.addView(
+            editorListenButton,
+            LinearLayout.LayoutParams(dp(58), dp(38)).apply { marginEnd = dp(5) }
+        )
+
+        grokStressButton =
+            GrokEditorToolbar.createStressButton(
+                activity = this,
+                editor = editor,
+                setResultText = { value -> resultText.text = value },
+                pauseIfPlaying = { if (isPlaying) pauseSpeech() },
+                scrollToOffset = { offset -> scrollEditorToOffset(offset) }
+            )
+        editorToolbar.addView(
+            grokStressButton,
+            LinearLayout.LayoutParams(dp(46), dp(38)).apply { marginEnd = dp(5) }
+        )
+
+        grokEditToolsButton =
+            GrokEditorToolbar.create(
+                activity = this,
+                editor = editor,
+                setResultText = { value -> resultText.text = value },
+                pauseIfPlaying = { if (isPlaying) pauseSpeech() },
+                scrollToOffset = { offset -> scrollEditorToOffset(offset) }
+            )
+        editorToolbar.addView(
+            grokEditToolsButton,
+            LinearLayout.LayoutParams(dp(82), dp(38)).apply { marginEnd = dp(5) }
+        )
+
+        val editorSaveButton = Button(this).apply {
+            text = "✓"
+            textSize = 20f
+            contentDescription = t("Сохранить", "Zapisz", "Save")
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            isFocusable = false
+            isFocusableInTouchMode = false
+            setOnClickListener { saveEditedText() }
+        }
+        KapijujaUiTheme.button(this, editorSaveButton)
+        editorToolbar.addView(
+            editorSaveButton,
+            LinearLayout.LayoutParams(dp(48), dp(38))
+        )
+        root.addView(
+            editorToolbar,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(44)
+            ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+        )
 
         contentFrame.addView(
             textView,
@@ -370,26 +468,6 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, voiceButton)
         voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(52), 1f))
         player.addView(voiceRow)
-
-        grokEditToolsButton =
-            GrokEditorToolbar.create(
-                activity = this,
-                editor = editor,
-                setResultText = { value -> resultText.text = value },
-                pauseIfPlaying = {
-                    if (isPlaying) pauseSpeech()
-                },
-                scrollToOffset = { offset ->
-                    scrollEditorToOffset(offset)
-                }
-            )
-        player.addView(
-            grokEditToolsButton,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(50)
-            ).apply { topMargin = dp(7) }
-        )
 
         exportProgress = ProgressBar(
             this,
@@ -1352,7 +1430,9 @@ class ReaderActivity : Activity() {
         editor.setSelection(safeOffset)
         textView.visibility = View.GONE
         editor.visibility = View.VISIBLE
-        player.visibility = View.VISIBLE
+        sourceView?.visibility = View.GONE
+        editorToolbar.visibility = View.VISIBLE
+        player.visibility = View.GONE
         editButton.text = t("Сохранить", "Save")
         playPause.isEnabled = true
         playPause.text =
@@ -1414,7 +1494,10 @@ class ReaderActivity : Activity() {
         voiceButton.isEnabled = true
         saveAudioButton.isEnabled = true
         saveRow.visibility = View.VISIBLE
+        editorToolbar.visibility = View.GONE
+        sourceView?.visibility = if (source.isNotBlank()) View.VISIBLE else View.GONE
         player.visibility = View.VISIBLE
+        hideEditorKeyboard()
         updateEditorToolVisibility()
         resultText.text = t("Текст сохранён.", "Text saved.")
         if (segments.isNotEmpty()) highlight(currentSegment)
@@ -1482,12 +1565,21 @@ class ReaderActivity : Activity() {
     }
 
     private fun updateEditorToolVisibility() {
-        if (!::grokEditToolsButton.isInitialized) return
+        if (!::grokEditToolsButton.isInitialized || !::grokStressButton.isInitialized) return
         GrokEditorToolbar.updateVisibility(
-            button = grokEditToolsButton,
+            stressButton = grokStressButton,
+            menuButton = grokEditToolsButton,
             editMode = editMode,
             engine = SettingsStore.engine(this)
         )
+    }
+
+    private fun hideEditorKeyboard() {
+        val input =
+            getSystemService(INPUT_METHOD_SERVICE) as?
+                android.view.inputmethod.InputMethodManager
+        input?.hideSoftInputFromWindow(editor.windowToken, 0)
+        editor.clearFocus()
     }
 
     private fun highlight(index: Int) {
