@@ -1,0 +1,34 @@
+name: apply-compact-editor-patch
+
+on:
+  push:
+    branches: [ "fix/compact-editor-toolbar" ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/compact-editor-toolbar
+          fetch-depth: 0
+
+      - name: Apply guarded patch
+        run: python3 scripts/apply_compact_editor_toolbar_patch.py
+
+      - name: Commit ReaderActivity patch
+        run: |
+          if git diff --quiet; then
+            echo "No changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/kapijuja/reader/ReaderActivity.kt
+          git commit -m "Make editor toolbar keyboard-safe and compact"
+          git push origin HEAD:fix/compact-editor-toolbar
