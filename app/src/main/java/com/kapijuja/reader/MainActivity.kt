@@ -478,6 +478,31 @@ class MainActivity : Activity() {
     }
 
     private fun openDraft(title: String, source: String, text: String) {
+        if (text.length > ReaderLimits.MAX_DOCUMENT_CHARS) {
+            AlertDialog.Builder(this)
+                .setTitle(t("Файл слишком большой", "Plik jest zbyt duży", "File too large"))
+                .setMessage(
+                    t(
+                        "В тексте ${text.length} символов. Для защиты памяти Android один документ ограничен ${ReaderLimits.MAX_DOCUMENT_CHARS} символами. Разделите файл на несколько частей.",
+                        "Tekst ma ${text.length} znaków. Dla ochrony pamięci Android jeden dokument jest ograniczony do ${ReaderLimits.MAX_DOCUMENT_CHARS} znaków. Podziel plik na części.",
+                        "The text contains ${text.length} characters. To protect Android memory, one document is limited to ${ReaderLimits.MAX_DOCUMENT_CHARS} characters. Split the file into parts."
+                    )
+                )
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+        if (text.length > ReaderLimits.WARN_DOCUMENT_CHARS) {
+            Toast.makeText(
+                this,
+                t(
+                    "Большой документ: быстрый ползунок справа поможет перемещаться по тексту.",
+                    "Duży dokument: szybki suwak po prawej ułatwi poruszanie się po tekście.",
+                    "Large document: use the fast handle on the right to move through the text."
+                ),
+                Toast.LENGTH_LONG
+            ).show()
+        }
         val dir = File(cacheDir, "drafts").apply { mkdirs() }
         val file = File(dir, UUID.randomUUID().toString() + ".txt")
         file.writeText(text)
