@@ -2,141 +2,113 @@ KAPIJUJA READER — CURRENT HANDOFF — 2026-09-17
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
+Current test target: 0.1.10 / versionCode 11
 
 START HERE
 1. AI_CONTEXT_INDEX.md
 2. AI_DEVELOPMENT_RULES.md
 3. this file
-4. only the subsystem context needed for the task
+4. one relevant docs/ai subsystem file only
+5. docs/ai/HANDOFF_POLICY.md when changing AI documentation
 
-CURRENT USER-FACING STATE
+Do not preload PROJECT_HANDOFF.md. It is historical/search-only material.
+
+CURRENT PRODUCT STATE
 
 TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini, xAI Grok and experimental local Silero.
 
-xAI Grok TTS is integrated for playback and MP3 export. The current REST unary limit is 60,000 characters. Grok paid playback does not speculative-prefetch the next chunk.
+xAI Grok TTS supports playback and MP3 export. Grok-specific pronunciation/delivery logic lives in GrokEditorMarkup.kt and GrokEditorToolbar.kt rather than ReaderActivity.
 
-EDITOR / PRONUNCIATION WORK
+EDITOR
 
-The Reader editor is a live proofreading/listening screen.
+Edit mode is a proofreading/listening workspace.
 
-- Entering edit mode no longer jumps to the end of a long document. It opens around the current playback/text position.
-- The current unsaved editor snapshot can be played from the cursor without leaving edit mode.
-- The user may edit while playback is active, then pause/restart to audition the edited wording immediately.
-- Saving the edited text keeps the position near the cursor instead of resetting to sentence 1.
-- Save-text and Save-MP3/WAV controls are hidden while editing and restored after leaving edit mode.
+- The normal large bottom player is hidden during editing.
+- A compact toolbar stays above the text while the Android keyboard is open.
+- Toolbar: Listen/Pause, dedicated Grok stress button, `Grok ▾`, Save.
+- Grok stress uses Unicode combining acute U+0301. Existing stress in the same word is replaced; other words are untouched.
+- `Grok ▾` groups delivery/speed/pitch and pauses/breath/sounds into submenus.
+- Save text/audio controls remain on the normal reading screen, not in edit mode.
+- ReaderActivity uses adjustResize so the IME should resize the editor instead of covering controls.
 
-COMPACT KEYBOARD-SAFE EDIT MODE
+PLAYBACK FROM EDITOR / CURSOR
 
-A device screenshot exposed that the old bottom player/tool panel was covered by the Android keyboard. The editor UI was therefore redesigned for real keyboard use.
+Playback must start from the exact requested text position, not merely from the beginning of the containing sentence.
 
-- ReaderActivity now requests `adjustResize`, so the IME should resize the working area rather than cover it.
-- In edit mode the large normal bottom player is hidden completely.
-- A compact fixed toolbar sits ABOVE the scrollable editor and stays available while the keyboard is open.
-- Compact toolbar actions are: Listen/Pause, dedicated stress button, `Grok ▾`, and Save.
-- The frequent stress action is a one-tap `´` button; it no longer requires opening the Grok menu.
-- `Grok ▾` is deliberately short. Its first level contains Stress, Delivery/speed/pitch, and Pauses/breath/sounds; the long action sets live in submenus.
-- Toolbar buttons are deliberately small and non-focus-stealing so tapping them should preserve the EditText caret/selection and keep the keyboard workflow usable.
-- The Reader header was also compacted: icon-sized Back and Settings buttons plus a single ellipsized title line.
-- The source label is hidden in edit mode to save vertical space and restored after save.
-- The editor minimum height was reduced from 14 to 6 lines so short documents do not force an unnecessarily tall scroll child.
+- With only a caret: start at the caret.
+- With a selection: start at the beginning of the selection; selection-only playback is not a product requirement.
+- For xAI Grok, if the position is inside an open wrapping tag such as `<slow>`, GrokEditorMarkup.playbackStartOffset() may move the effective start back to the opening tag so the style instruction remains valid.
+- ReaderActivity keeps a playbackStartOffsetOverride for the first segment only. Later segments use their full text.
+- The same exact-first-segment rule applies to Android TTS and cloud TTS.
+- Unsaved editor text is used immediately for auditioning.
 
-GROK-ONLY EDITOR TOOLS
+PLAYBACK WAITING INDICATOR
 
-When the selected engine is xAI Grok and edit mode is active, the dedicated stress and `Grok ▾` controls are visible. They are hidden for every other engine; Listen/Pause and Save remain available.
+PlaybackBusyIndicator.kt animates the play control while a TTS request/engine is preparing. It rotates small triangle glyphs rather than the entire button. When audio actually starts, the editor control becomes Pause. Export already has a real percent progress bar; network TTS generation does not invent fake percentages when the provider gives no byte-level progress.
 
-Stress implementation uses Unicode combining acute U+0301.
+FAST NAVIGATION FOR LONG TEXTS
 
-Stress UX:
-- place the caret immediately AFTER the desired vowel, or select exactly one vowel;
-- tap the dedicated `´` button (or choose Stress from `Grok ▾`);
-- the helper verifies the target is a vowel;
-- any existing combining acute stress mark in the SAME word is removed;
-- the new acute mark is inserted after the selected vowel;
-- stress marks in other words are preserved.
+ReaderFastScroller.kt is a draggable overlay on the right side of the Reader scroll area.
 
-No pronunciation dictionary UI is implemented. This is intentional: identical spelling can need different stress in different contexts, so correction is per occurrence.
+- The old Android scrollbar was only an indicator and is disabled.
+- The custom thumb can be grabbed and dragged directly to jump through a long book.
+- Tapping the track also jumps to that region.
+- It is hidden for short documents.
+- Text/editor right padding leaves room for the thumb.
 
-GROK SPEECH TAGS
+LARGE-DOCUMENT SAFETY
 
-GrokEditorMarkup.kt contains the documented wrapping and inline tags used by the compact dropdown.
+ReaderLimits.kt centralizes safety ceilings.
 
-Wrapping tags:
-soft, whisper, loud, build-intensity, decrease-intensity, higher-pitch, lower-pitch, slow, fast, sing-song, singing, emphasis.
+- warning threshold: 750,000 characters;
+- hard editable/display document limit: 2,000,000 characters;
+- source stream hard limit: 64 MiB;
+- expanded DOCX document.xml hard limit: 32 MiB;
+- library hard item ceiling: 5,000;
+- library metadata index ceiling: 8 MiB;
+- existing library body storage ceiling remains 1 GiB.
 
-Inline events:
-pause, long-pause, hum-tune, laugh, chuckle, giggle, cry, tsk, tongue-click, lip-smack, breath, inhale, exhale, sigh.
+DocumentTextExtractor checks source size before/until reading and bounds DOCX XML expansion. MainActivity refuses documents beyond the display limit and warns for very large accepted documents.
 
-For a wrapping action, select a word/phrase then choose the action; the tool wraps the selection with the matching opening/closing tag. Inline events are inserted at the cursor.
+LIBRARY STORAGE DECISION
 
-TAG-SAFE PLAYBACK / EXPORT
+Do not migrate to SQLite yet.
 
-Grok wrapping tags must not be cut in half by text chunking.
+Current LibraryStore already stores each document body in a separate `library/<id>.txt`. `index.json` contains metadata only (id/title/source/date). The library screen is paginated and excerpts are streamed from only the beginning of each text.
 
-- If playback begins inside a styled Grok span, playbackStartOffset() moves the effective starting position back to the outermost open Grok tag so the request contains its style instruction.
-- Reader cloud playback continues a Grok chunk past the usual short chunk target until open wrapping tags close, subject to the provider hard limit.
-- XaiTtsClient.splitForApi() uses balancedChunkEnd() so MP3 export also keeps wrapping tags balanced.
+LibraryStore now also caps item count/index size and writes index metadata through a temporary file before replacement. SQLite becomes worthwhile later if the product needs thousands of searchable/sortable records, full-text search, tags, or relational metadata.
 
-FILES
+GROK TAG SAFETY
 
-GrokEditorMarkup.kt
-- pure text logic;
-- stress insertion/replacement;
-- supported Grok action catalog;
-- tag parsing/balance helpers;
-- playback-start adjustment;
-- safe chunk-end calculation.
+Wrapping tags include soft, whisper, loud, build/decrease intensity, higher/lower pitch, slow/fast, sing-song, singing and emphasis. Inline events include pauses, breathing and supported vocal sounds.
 
-GrokEditorToolbar.kt
-- Android UI adapter for Grok editor controls;
-- creates the dedicated compact stress button and short Grok menu;
-- groups less-frequent actions into submenus;
-- applies GrokEditorMarkup transformations to EditText;
-- keeps provider-specific editor UI out of ReaderActivity.
+Grok wrapping tags must remain balanced across playback/export chunks. If playback begins inside a tagged span, effective start moves back to the relevant opening tag.
 
-ReaderActivity.kt
-- coordinates edit-mode playback snapshot, cursor/segment, compact toolbar visibility and keyboard-safe layout;
-- normal large player is hidden in edit mode;
-- do not move Grok text transformations back into this Activity.
+ARCHITECTURE / AI CONTEXT
 
-AndroidManifest.xml
-- ReaderActivity uses `android:windowSoftInputMode="adjustResize"`.
+ReaderActivity and SettingsActivity remain legacy migration targets. Do not grow them with provider-specific helpers when a separate component is appropriate.
 
-XaiTtsClient.kt
-- official xAI REST client;
-- hard request limit 60,000 chars;
-- tag-aware export chunking.
-
-Tests:
-app/src/test/java/com/kapijuja/reader/GrokEditorMarkupTest.kt
-covers stress replacement, selected vowel, invalid consonant, preserving stress in another word, already-stressed target, wrapping tags, inline insertion, playback start inside a tag and balanced nested chunks.
-
-docs/ai/EDITOR_GROK_TEST_PLAN.md
-contains the current device smoke test, including keyboard visibility and compact toolbar checks.
-
-ARCHITECTURE
-
-ReaderActivity is still a legacy migration target. Historical size was ~105.7 KB. Keep extracting cohesive editor/session responsibilities rather than growing the Activity indefinitely. Grok transformation/menu logic belongs in GrokEditorMarkup/GrokEditorToolbar.
-
-SettingsActivity remains a migration target and should not grow for unrelated work.
+AI handoff files must not grow forever. Follow docs/ai/HANDOFF_POLICY.md:
+- current handoff target <=15 KB, rotate before/at 20 KB;
+- subsystem context target <=20 KB, split before 25 KB;
+- completed history goes under docs/ai/history/;
+- no raw build logs/full diffs in handoff;
+- PROJECT_HANDOFF.md is search-only historical material.
 
 VALIDATION
 
-Feature CI runs on PRs to main:
+Before merging a Reader change require PR feature-check to pass:
 - scripts/check_source_size.py
 - :app:testDebugUnitTest
 - :app:compileDebugKotlin
 
-Before merging changes, require those checks to be green. main CI then builds/verifies/signs the APK and publishes the latest test APK release.
+After merge, main CI must build, verify/sign and publish the latest test APK.
 
-CURRENT TEST BUILD TARGET
+DEVICE TEST PRIORITIES
 
-Version code 10 / version name 0.1.9 contains the compact keyboard-safe editor UI.
-
-NEXT GOOD STEPS
-
-1. Device-test the exact screenshot scenario: select text with Samsung keyboard open and verify `▶ ‖  ´  Grok ▾  ✓` remains visible above the editor.
-2. Verify tapping `´` does not collapse the current caret/selection and does not dismiss the keyboard unnecessarily.
-3. Verify `Grok ▾` submenus remain usable with the keyboard visible on a small portrait screen.
-4. A/B test combining-acute stress with several Grok voices.
-5. If editor functionality grows again, extract editor-session state/cursor coordination from ReaderActivity into its own component.
-6. Do not add dictionary-based pronunciation unless the user explicitly changes this product decision.
+1. xAI Grok selected -> Edit -> put caret in middle of a sentence -> tap Play -> spinner appears -> audio starts exactly at caret while editor remains visible.
+2. Select a phrase -> tap Play -> audio starts at selection start.
+3. While keyboard is visible, drag the right fast-scroll thumb from near top to near bottom of a long text.
+4. Put caret after a vowel -> tap dedicated stress button -> audition again without saving/exiting.
+5. Verify normal bottom panel is compact and edit mode still hides it completely.
+6. Open a very large supported document and verify warning/limit behavior instead of crash or uncontrolled memory growth.
