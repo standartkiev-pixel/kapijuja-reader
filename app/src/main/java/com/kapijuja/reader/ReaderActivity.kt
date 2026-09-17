@@ -371,18 +371,18 @@ class ReaderActivity : Activity() {
         voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(52), 1f))
         player.addView(voiceRow)
 
-        grokEditToolsButton = Button(this).apply {
-            text =
-                t(
-                    "Grok: ударение / подача ▾",
-                    "Grok: akcent / sposób czytania ▾",
-                    "Grok: stress / delivery ▾"
-                )
-            textSize = 14f
-            visibility = View.GONE
-            setOnClickListener { showGrokEditorTools() }
-        }
-        KapijujaUiTheme.button(this, grokEditToolsButton, primary = true)
+        grokEditToolsButton =
+            GrokEditorToolbar.create(
+                activity = this,
+                editor = editor,
+                setResultText = { value -> resultText.text = value },
+                pauseIfPlaying = {
+                    if (isPlaying) pauseSpeech()
+                },
+                scrollToOffset = { offset ->
+                    scrollEditorToOffset(offset)
+                }
+            )
         player.addView(
             grokEditToolsButton,
             LinearLayout.LayoutParams(
@@ -1483,96 +1483,11 @@ class ReaderActivity : Activity() {
 
     private fun updateEditorToolVisibility() {
         if (!::grokEditToolsButton.isInitialized) return
-        grokEditToolsButton.visibility =
-            if (editMode && SettingsStore.engine(this) == SettingsStore.ENGINE_XAI) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
-    }
-
-    private fun showGrokEditorTools() {
-        if (!editMode || SettingsStore.engine(this) != SettingsStore.ENGINE_XAI) return
-
-        val actions =
-            GrokEditorMarkup.actions
-                .filter { it.kind != GrokEditorMarkup.Kind.SECTION }
-        val labels =
-            actions
-                .map { GrokEditorMarkup.label(it, UiText.language(this)) }
-                .toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle(
-                t(
-                    "Grok — произношение и подача",
-                    "Grok — wymowa i sposób czytania",
-                    "Grok — pronunciation and delivery"
-                )
-            )
-            .setItems(labels) { _, which ->
-                applyGrokEditorAction(actions[which])
-            }
-            .setNegativeButton(t("Отмена", "Anuluj", "Cancel"), null)
-            .show()
-    }
-
-    private fun applyGrokEditorAction(action: GrokEditorMarkup.Action) {
-        if (isPlaying) pauseSpeech()
-
-        try {
-            val current = editor.text.toString()
-            val start = editor.selectionStart.coerceAtLeast(0)
-            val end = editor.selectionEnd.coerceAtLeast(0)
-            val result =
-                when (action.kind) {
-                    GrokEditorMarkup.Kind.STRESS ->
-                        GrokEditorMarkup.addStress(current, start, end)
-                    GrokEditorMarkup.Kind.WRAP ->
-                        GrokEditorMarkup.wrapSelection(
-                            current,
-                            start,
-                            end,
-                            action.token
-                        )
-                    GrokEditorMarkup.Kind.INSERT ->
-                        GrokEditorMarkup.insertToken(
-                            current,
-                            start,
-                            end,
-                            action.token
-                        )
-                    GrokEditorMarkup.Kind.SECTION -> return
-                }
-
-            editor.setText(result.text)
-            editor.setSelection(
-                result.selectionStart.coerceIn(0, editor.text.length),
-                result.selectionEnd.coerceIn(0, editor.text.length)
-            )
-            editor.requestFocus()
-            scrollEditorToOffset(result.selectionEnd)
-
-            resultText.text =
-                when (action.kind) {
-                    GrokEditorMarkup.Kind.STRESS ->
-                        t(
-                            "Ударение поставлено. Нажмите «Слушать от курсора» для проверки.",
-                            "Akcent został ustawiony. Naciśnij „Czytaj od kursora”, aby sprawdzić.",
-                            "Stress mark added. Tap “Listen from cursor” to check it."
-                        )
-                    GrokEditorMarkup.Kind.WRAP ->
-                        "<${action.token}>…</${action.token}>"
-                    GrokEditorMarkup.Kind.INSERT -> action.token
-                    GrokEditorMarkup.Kind.SECTION -> ""
-                }
-        } catch (error: IllegalArgumentException) {
-            Toast.makeText(
-                this,
-                error.message ?: t("Неверное выделение", "Nieprawidłowe zaznaczenie", "Invalid selection"),
-                Toast.LENGTH_LONG
-            ).show()
-        }
+        GrokEditorToolbar.updateVisibility(
+            button = grokEditToolsButton,
+            editMode = editMode,
+            engine = SettingsStore.engine(this)
+        )
     }
 
     private fun highlight(index: Int) {
