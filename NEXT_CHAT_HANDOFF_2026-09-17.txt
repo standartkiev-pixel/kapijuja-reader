@@ -15,26 +15,40 @@ TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini, xAI Gro
 
 xAI Grok TTS is integrated for playback and MP3 export. The current REST unary limit is 60,000 characters. Grok paid playback does not speculative-prefetch the next chunk.
 
-NEW EDITOR / PRONUNCIATION WORK
+EDITOR / PRONUNCIATION WORK
 
-The Reader editor is now also a live proofreading/listening screen.
+The Reader editor is a live proofreading/listening screen.
 
 - Entering edit mode no longer jumps to the end of a long document. It opens around the current playback/text position.
-- The play button remains active in edit mode and reads the current unsaved editor snapshot starting at the cursor.
+- The current unsaved editor snapshot can be played from the cursor without leaving edit mode.
 - The user may edit while playback is active, then pause/restart to audition the edited wording immediately.
 - Saving the edited text keeps the position near the cursor instead of resetting to sentence 1.
 - Save-text and Save-MP3/WAV controls are hidden while editing and restored after leaving edit mode.
-- Engine and voice controls remain accessible.
+
+COMPACT KEYBOARD-SAFE EDIT MODE
+
+A device screenshot exposed that the old bottom player/tool panel was covered by the Android keyboard. The editor UI was therefore redesigned for real keyboard use.
+
+- ReaderActivity now requests `adjustResize`, so the IME should resize the working area rather than cover it.
+- In edit mode the large normal bottom player is hidden completely.
+- A compact fixed toolbar sits ABOVE the scrollable editor and stays available while the keyboard is open.
+- Compact toolbar actions are: Listen/Pause, dedicated stress button, `Grok ▾`, and Save.
+- The frequent stress action is a one-tap `´` button; it no longer requires opening the Grok menu.
+- `Grok ▾` is deliberately short. Its first level contains Stress, Delivery/speed/pitch, and Pauses/breath/sounds; the long action sets live in submenus.
+- Toolbar buttons are deliberately small and non-focus-stealing so tapping them should preserve the EditText caret/selection and keep the keyboard workflow usable.
+- The Reader header was also compacted: icon-sized Back and Settings buttons plus a single ellipsized title line.
+- The source label is hidden in edit mode to save vertical space and restored after save.
+- The editor minimum height was reduced from 14 to 6 lines so short documents do not force an unnecessarily tall scroll child.
 
 GROK-ONLY EDITOR TOOLS
 
-When the selected engine is xAI Grok and edit mode is active, a compact button/dropdown appears: Grok stress / delivery. It is hidden for every other engine.
+When the selected engine is xAI Grok and edit mode is active, the dedicated stress and `Grok ▾` controls are visible. They are hidden for every other engine; Listen/Pause and Save remain available.
 
-The first action is stress placement. Implementation uses Unicode combining acute U+0301.
+Stress implementation uses Unicode combining acute U+0301.
 
 Stress UX:
 - place the caret immediately AFTER the desired vowel, or select exactly one vowel;
-- choose the first Stress action;
+- tap the dedicated `´` button (or choose Stress from `Grok ▾`);
 - the helper verifies the target is a vowel;
 - any existing combining acute stress mark in the SAME word is removed;
 - the new acute mark is inserted after the selected vowel;
@@ -73,43 +87,56 @@ GrokEditorMarkup.kt
 - safe chunk-end calculation.
 
 GrokEditorToolbar.kt
-- Android UI adapter for the compact Grok-only editor control;
-- shows the dropdown;
+- Android UI adapter for Grok editor controls;
+- creates the dedicated compact stress button and short Grok menu;
+- groups less-frequent actions into submenus;
 - applies GrokEditorMarkup transformations to EditText;
 - keeps provider-specific editor UI out of ReaderActivity.
 
 ReaderActivity.kt
-- only coordinates edit-mode playback snapshot, current cursor/segment and toolbar visibility;
+- coordinates edit-mode playback snapshot, cursor/segment, compact toolbar visibility and keyboard-safe layout;
+- normal large player is hidden in edit mode;
 - do not move Grok text transformations back into this Activity.
+
+AndroidManifest.xml
+- ReaderActivity uses `android:windowSoftInputMode="adjustResize"`.
 
 XaiTtsClient.kt
 - official xAI REST client;
-- hard request limit updated to 60,000 chars;
+- hard request limit 60,000 chars;
 - tag-aware export chunking.
 
 Tests:
 app/src/test/java/com/kapijuja/reader/GrokEditorMarkupTest.kt
 covers stress replacement, selected vowel, invalid consonant, preserving stress in another word, already-stressed target, wrapping tags, inline insertion, playback start inside a tag and balanced nested chunks.
 
+docs/ai/EDITOR_GROK_TEST_PLAN.md
+contains the current device smoke test, including keyboard visibility and compact toolbar checks.
+
 ARCHITECTURE
 
-ReaderActivity is still a legacy migration target. Historical size was ~105.7 KB. After xAI dispatch extraction it was ~88.6 KB. The new edit-mode coordination raises it to about 94 KB, while Grok-specific transformation/UI logic is kept in separate files. Continue extracting cohesive editor/session responsibilities instead of growing the Activity indefinitely.
+ReaderActivity is still a legacy migration target. Historical size was ~105.7 KB. Keep extracting cohesive editor/session responsibilities rather than growing the Activity indefinitely. Grok transformation/menu logic belongs in GrokEditorMarkup/GrokEditorToolbar.
 
-SettingsActivity remains about 46.8 KB and should not grow for unrelated work.
+SettingsActivity remains a migration target and should not grow for unrelated work.
 
 VALIDATION
 
-Feature CI is configured to run:
+Feature CI runs on PRs to main:
 - scripts/check_source_size.py
 - :app:testDebugUnitTest
 - :app:compileDebugKotlin
 
-Before merging future changes, require those checks to be green. main CI then builds/verifies/signs the APK and publishes the latest test APK release.
+Before merging changes, require those checks to be green. main CI then builds/verifies/signs the APK and publishes the latest test APK release.
+
+CURRENT TEST BUILD TARGET
+
+Version code 10 / version name 0.1.9 contains the compact keyboard-safe editor UI.
 
 NEXT GOOD STEPS
 
-1. Device-test edit-mode listening on a long Russian text while moving the cursor and correcting stress.
-2. A/B test explicit combining acute stress with several Grok voices.
-3. Check whether Android EditText selection/caret stays comfortable when nested Grok tags are used repeatedly.
-4. If editor functionality grows again, extract editor-session state/cursor coordination from ReaderActivity into its own component.
-5. Do not add dictionary-based pronunciation unless the user explicitly changes this product decision.
+1. Device-test the exact screenshot scenario: select text with Samsung keyboard open and verify `▶ ‖  ´  Grok ▾  ✓` remains visible above the editor.
+2. Verify tapping `´` does not collapse the current caret/selection and does not dismiss the keyboard unnecessarily.
+3. Verify `Grok ▾` submenus remain usable with the keyboard visible on a small portrait screen.
+4. A/B test combining-acute stress with several Grok voices.
+5. If editor functionality grows again, extract editor-session state/cursor coordination from ReaderActivity into its own component.
+6. Do not add dictionary-based pronunciation unless the user explicitly changes this product decision.
