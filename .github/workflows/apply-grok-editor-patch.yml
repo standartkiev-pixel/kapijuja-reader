@@ -18,8 +18,12 @@ jobs:
           ref: feature/grok-editor-stress-tools
           fetch-depth: 0
 
-      - name: Apply guarded ReaderActivity patch
-        run: python3 scripts/apply_grok_editor_ui_patch.py
+      - name: Apply guarded ReaderActivity patches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_grok_editor_ui_patch.py
+          python3 scripts/apply_grok_tag_chunk_patch.py
 
       - name: Commit patched ReaderActivity
         shell: bash
@@ -32,5 +36,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/java/com/kapijuja/reader/ReaderActivity.kt
-          git commit -m "Integrate Grok editor playback and stress tools"
+          git commit -m "Keep Grok editor playback tags balanced"
           git push origin HEAD:feature/grok-editor-stress-tools
