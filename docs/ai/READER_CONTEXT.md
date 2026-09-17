@@ -1,6 +1,6 @@
 # Kapijuja Reader — reader/playback/export context
 
-Use this routing note for tasks involving reading position, highlighting, playback, edit-mode listening, notifications, audio generation, or export.
+Use this routing note for tasks involving reading position, highlighting, playback, edit-mode listening, fast navigation, notifications, audio generation, or export.
 
 ## Main rule
 
@@ -10,73 +10,68 @@ Use this routing note for tasks involving reading position, highlighting, playba
 
 - `PlaybackBridge.kt` — notification/controller bridge.
 - `ReaderPlaybackService.kt` — foreground playback/service behavior.
-- `ExportBridge.kt` — export cancellation/control bridge.
-- `ReaderExportService.kt` — foreground long-running export support.
+- `PlaybackBusyIndicator.kt` — compact rotating-triangle waiting state while TTS is preparing.
+- `ReaderFastScroller.kt` — draggable right-side fast-scroll handle for long documents.
+- `ExportBridge.kt` / `ReaderExportService.kt` — export control and foreground service.
 - `WavTools.kt` — WAV/PCM utilities.
 - provider clients — cloud TTS protocol and provider-specific splitting.
 - `SileroRuntime.kt` — local Silero inference.
 - `GrokEditorMarkup.kt` — pure stress-mark and Grok speech-tag transformations plus balanced tag/chunk helpers.
-- `GrokEditorToolbar.kt` — compact Grok-only editor dropdown/UI; keep Grok-specific editor UI out of `ReaderActivity.kt`.
+- `GrokEditorToolbar.kt` — compact Grok editor controls/menu; keep Grok-specific editor UI out of `ReaderActivity.kt`.
+- `ReaderLimits.kt` — document/source/library safety ceilings.
 
 ## Edit-mode playback
 
-Edit mode is also a listening/proofreading mode. Important behavior:
+Edit mode is also a listening/proofreading mode.
 
-- entering edit mode keeps the current playback/text position instead of jumping to the end of a long document;
-- the play button remains enabled and reads the current unsaved editor snapshot from the cursor position;
-- the user can continue editing while audio is playing, then pause/restart to audition the new text;
-- saving preserves the editor position instead of resetting the Reader to sentence 1;
-- the normal `Save text` / `Save MP3/WAV` row is hidden while editing and restored after leaving edit mode;
-- when xAI Grok is selected, a compact Grok editor toolbar is visible; it is hidden for all other engines.
+- entering edit mode keeps the current playback/text region instead of jumping to document end;
+- the current unsaved editor snapshot is used for auditioning;
+- playback starts from the exact caret position, not merely the beginning of its sentence;
+- if a selection exists, playback starts at the beginning of the selection; selection-only playback is not required;
+- xAI Grok may move the effective start backward to an opening wrapping tag so `<slow>`, `<emphasis>`, etc. remain valid;
+- only the first segment is sliced at the exact start; later segments are spoken in full;
+- the same exact-first-segment rule applies to Android TTS and cloud TTS;
+- editor stays visible while audio is preparing/playing;
+- user may edit while audio plays, then pause/restart to audition the changed draft;
+- saving preserves position instead of resetting to sentence 1.
 
-For Grok editor behavior, start with `GrokEditorMarkup.kt` and `GrokEditorToolbar.kt`; only then inspect the small edit-mode call sites in `ReaderActivity.kt`.
+The compact editor toolbar is above the scroll area. The normal bottom player is hidden in edit mode. `adjustResize` keeps the toolbar accessible with the keyboard open.
+
+## Waiting/progress UI
+
+For cloud generation/Android engine initialization, use `PlaybackBusyIndicator`: animate the Play control while waiting, then show Pause once audio actually starts. Do not invent fake network percentages when a provider does not report transfer/generation progress.
+
+Audio export is different: export owns real item/chunk progress and may show a percentage.
+
+## Long-document navigation
+
+The built-in Android scrollbar is only a visual indicator. `ReaderFastScroller` overlays a real draggable thumb on the right side of the Reader scroll area. It is intended for jumping through book-sized texts and hides itself on short documents.
 
 ## Grok pronunciation markup
 
-The first Grok editor action is stress placement using Unicode combining acute U+0301. The caret is placed immediately after the target vowel (or one vowel is selected). Existing stress marks in the same word are removed before the new one is inserted. Stress in other words is preserved.
+Stress placement uses Unicode combining acute U+0301. Put the caret immediately after the target vowel (or select one vowel). Existing stress in the same word is removed before the new mark is inserted; other words are preserved.
 
-Grok wrapping tags are inserted around the selected text; inline events are inserted at the cursor. Playback/chunk planning must not split an open Grok wrapping tag. If playback starts inside a tagged span, the start is moved back far enough to include the opening tag.
+Wrapping tags surround selected text; inline events are inserted at the cursor. Playback/export chunking must not split open Grok wrapping tags. If playback starts inside a tagged span, include the necessary opening tag.
 
-Do not add a pronunciation dictionary UI unless explicitly requested. Current product direction is explicit per-occurrence stress/markup because identical spelling can require different stress depending on context.
+Do not add a pronunciation dictionary UI unless explicitly requested. Current product direction is explicit per-occurrence correction because identical spelling can need different stress by context.
 
 ## Responsibilities still inside ReaderActivity
 
-The oversized Activity still mixes several concerns, including:
+The Activity still coordinates screen/lifecycle, tap-to-start, segmentation, editor playback snapshot, Android TTS lifecycle, cloud sequencing, playback state, highlighting and export UI. Extract these gradually rather than growing the Activity.
 
-- screen construction and lifecycle;
-- tap-to-start and text highlighting/autoscroll;
-- sentence/text segmentation;
-- editor session/playback snapshot coordination;
-- Android TTS lifecycle and utterance callbacks;
-- cloud playback sequencing/prefetch;
-- local Silero playback dispatch;
-- playback state;
-- export destination and progress UI;
-- Android/cloud export orchestration;
-- cancellation state.
-
-These should be extracted gradually, with behavior preserved.
-
-## Safe extraction order
-
-Prefer pure or nearly pure responsibilities first:
-
+Preferred future extraction order:
 1. text segmentation / segment model;
-2. filename and other pure formatting helpers;
-3. chunk planning / playback state helpers;
-4. editor session coordinator;
-5. export state/progress logic;
-6. Android TTS adapter;
-7. cloud playback coordinator;
-8. highlighting/autoscroll helpers.
-
-After each extraction, build/test before moving the next responsibility.
+2. editor session + exact-start state;
+3. cloud playback coordinator;
+4. Android TTS adapter;
+5. highlighting/autoscroll;
+6. export state/progress.
 
 ## Do not
 
 - do not rewrite `ReaderActivity.kt` in full;
-- do not put Grok stress/tag transformation code back into `ReaderActivity.kt`;
-- do not combine a structural extraction with unrelated UI changes;
+- do not put Grok transformation/menu code back into it;
+- do not put fast-scroll drawing/touch logic back into it;
 - do not move HTTP code into the Activity;
-- do not create a second competing playback/export state machine without removing the old responsibility;
-- do not load `SettingsActivity.kt` unless the requested change actually touches settings.
+- do not create a second competing playback state machine;
+- do not load `SettingsActivity.kt` unless the task really touches settings.
