@@ -20,7 +20,7 @@ data class LibraryPruneResult(
 
 object LibraryStore {
     // Even when the user selects "all", the reader is not intended to become
-    // an unlimited document archive. Keep a hard storage safety ceiling.
+    // an unlimited document archive. Keep hard storage/count safety ceilings.
     const val HARD_MAX_BYTES = 1024L * 1024L * 1024L
 
     private fun dir(context: Context): File =
@@ -32,10 +32,18 @@ object LibraryStore {
     fun list(context: Context): List<LibraryItem> {
         val file = indexFile(context)
         if (!file.exists()) return emptyList()
+        if (file.length() > ReaderLimits.HARD_MAX_LIBRARY_INDEX_BYTES) {
+            AppDiagnostics.error(
+                context,
+                "Library index safety limit exceeded: bytes=${file.length()}"
+            )
+            return emptyList()
+        }
         return try {
             val array = JSONArray(file.readText())
             buildList {
-                for (i in 0 until array.length()) {
+                val count = minOf(array.length(), ReaderLimits.HARD_MAX_LIBRARY_ITEMS)
+                for (i in 0 until count) {
                     val o = array.getJSONObject(i)
                     add(
                         LibraryItem(
@@ -53,6 +61,7 @@ object LibraryStore {
     }
 
     fun add(context: Context, title: String, source: String, text: String): String {
+        ReaderLimits.requireDisplaySafe(text)
         val id = UUID.randomUUID().toString()
         File(dir(context), "$id.txt").writeText(text)
         val current = list(context).toMutableList()
@@ -72,6 +81,7 @@ object LibraryStore {
     }
 
     fun update(context: Context, id: String, title: String, source: String, text: String) {
+        ReaderLimits.requireDisplaySafe(text)
         File(dir(context), "$id.txt").writeText(text)
         val current = list(context).toMutableList()
         val old = current.firstOrNull { it.id == id }
@@ -115,6 +125,7 @@ object LibraryStore {
             items.isNotEmpty() &&
             (
                 (maxItems > 0 && items.size > maxItems) ||
+                    items.size > ReaderLimits.HARD_MAX_LIBRARY_ITEMS ||
                     totalBytes > HARD_MAX_BYTES
                 )
         ) {
@@ -136,8 +147,10 @@ object LibraryStore {
             File(dir(context), "${item.id}.txt").takeIf { it.exists() }?.length() ?: 0L
         }
 
-    fun text(context: Context, id: String): String =
-        File(dir(context), "$id.txt").takeIf { it.exists() }?.readText().orEmpty()
+    fun text(context: Context, id: String): String {
+        val file = File(dir(context), "$id.txt").takeIf { it.exists() } ?: return ""
+        return file.readText().also { ReaderLimits.requireDisplaySafe(it) }
+    }
 
     fun excerpt(context: Context, id: String, maxChars: Int = 150): String {
         val file = File(dir(context), "$id.txt")
@@ -180,6 +193,21 @@ object LibraryStore {
                     .put("createdAt", it.createdAt)
             )
         }
-        indexFile(context).writeText(array.toString())
+        val payload = array.toString()
+        require(payload.toByteArray(Charsets.UTF_8).size <= ReaderLimits.HARD_MAX_LIBRARY_INDEX_BYTES) {
+            "Library metadata index exceeded its safety limit"
+        }
+
+        val target = indexFile(context)
+        val temp = File(target.parentFile, "index.json.tmp")
+        temp.writeText(payload)
+        if (target.exists() && !target.delete()) {
+            temp.delete()
+            error("Could not replace library index")
+        }
+        if (!temp.renameTo(target)) {
+            temp.delete()
+            error("Could not commit library index")
+        }
     }
 }
