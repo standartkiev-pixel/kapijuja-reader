@@ -606,8 +606,6 @@ class SettingsActivity : Activity() {
             "OpenAI — GPT-4o Mini TTS"
         dynamic += SettingsStore.ENGINE_EDGE to
             t("Microsoft Edge — бесплатно", "Microsoft Edge — free")
-        dynamic += SettingsStore.ENGINE_SILERO to
-            t("Silero v5.5 — эксперимент", "Silero v5.5 — experiment")
         dynamic += SettingsStore.ENGINE_AZURE to
             t("Microsoft Azure — нужен credential", "Microsoft Azure — credential required")
         dynamic += SettingsStore.ENGINE_GOOGLE to
@@ -649,26 +647,6 @@ class SettingsActivity : Activity() {
                     )
                 }
 
-                if (id == SettingsStore.ENGINE_SILERO) {
-                    val voices = SileroRuntime.voiceChoices(this)
-                    if (voices.isNotEmpty()) {
-                        val current = SettingsStore.voice(this, id)
-                        if (voices.none { it.id == current }) {
-                            SettingsStore.setVoice(
-                                this,
-                                id,
-                                voices.first().id
-                            )
-                        }
-                        voiceButton.text = currentVoiceLabel()
-                    }
-                    statusText.text =
-                        t(
-                            "Silero v5.5 подключён. Первый запуск голоса загрузит PyTorch-модель в память и может занять несколько секунд.",
-                            "Silero v5.5 jest podłączony. Pierwsze uruchomienie głosu załaduje model PyTorch do pamięci i może potrwać kilka sekund.",
-                            "Silero v5.5 is connected. The first voice run loads the PyTorch model into memory and may take a few seconds."
-                        )
-                }
 
                 if (
                     id == SettingsStore.ENGINE_GOOGLE &&
@@ -735,12 +713,7 @@ class SettingsActivity : Activity() {
             return
         }
 
-        val voices =
-            if (engine == SettingsStore.ENGINE_SILERO) {
-                SileroRuntime.voiceChoices(this)
-            } else {
-                VoiceCatalog.staticVoices(engine)
-            }
+        val voices = VoiceCatalog.staticVoices(engine)
         if (voices.isEmpty()) {
             Toast.makeText(this, t("Для этого движка список голосов пока недоступен", "No voice list is available for this engine yet"), Toast.LENGTH_SHORT).show()
             return
@@ -903,13 +876,6 @@ class SettingsActivity : Activity() {
                         "Working Speech API. DNS failures get up to 3 safe retries; timeouts are not retried automatically to avoid double billing."
                     )
 
-                engine == SettingsStore.ENGINE_SILERO ->
-                    t(
-                        "Silero v5.5 работает локально через встроенный PyTorch Android runtime. Голоса и их ID читаются из metadata, извлечённых из официальной модели: ${SileroRuntime.modelDescription(this)}. В этой первой Android-версии отдельный Python accentor Silero не встроен, поэтому ударения могут быть хуже, чем в полном Python package.",
-                        "Silero v5.5 działa lokalnie przez wbudowany PyTorch Android runtime. Głosy i ich identyfikatory są czytane z metadanych wyciągniętych z oficjalnego modelu: ${SileroRuntime.modelDescription(this)}. W tej pierwszej wersji Android osobny accentor Pythona Silero nie jest dołączony, więc akcentowanie może być gorsze niż w pełnym pakiecie Python.",
-                        "Silero v5.5 runs locally through the bundled PyTorch Android runtime. Voice names and IDs are read from metadata extracted from the official model: ${SileroRuntime.modelDescription(this)}. This first Android adapter does not bundle Silero's separate Python accentor, so stress placement may be worse than in the full Python package."
-                    )
-
                 engine == SettingsStore.ENGINE_EDGE ->
                     t(
                         "Microsoft Edge Read Aloud подключён: бесплатная сетевая озвучка без API key. Это неофициальный endpoint Edge, поэтому протокол может измениться.",
@@ -960,12 +926,7 @@ class SettingsActivity : Activity() {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
         if (id.isBlank()) return t("Выбрать голос", "Choose voice")
-        val voices =
-            if (engine == SettingsStore.ENGINE_SILERO) {
-                SileroRuntime.voiceChoices(this)
-            } else {
-                VoiceCatalog.staticVoices(engine)
-            }
+        val voices = VoiceCatalog.staticVoices(engine)
         return voices.firstOrNull { it.id == id }?.label ?: id
     }
 
@@ -973,7 +934,6 @@ class SettingsActivity : Activity() {
         id == SettingsStore.DEFAULT_ENGINE -> t("Google Android TTS — по умолчанию", "Google Android TTS — default")
         id == SettingsStore.ENGINE_ANDROID_SYSTEM -> t("Android TTS — системный", "Android TTS — system default")
         id == SettingsStore.ENGINE_OPENAI -> "OpenAI — GPT-4o Mini TTS"
-        id == SettingsStore.ENGINE_SILERO -> "Silero TTS v5.5 Russian"
         id == SettingsStore.ENGINE_EDGE -> t("Microsoft Edge — тест", "Microsoft Edge — test", "Microsoft Edge — test")
         id == SettingsStore.ENGINE_AZURE -> "Microsoft Azure Speech"
         id == SettingsStore.ENGINE_GOOGLE -> "Google Gemini 2.5 Flash TTS"
