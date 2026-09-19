@@ -134,7 +134,7 @@ When architecture or responsibilities change, update the relevant `docs/ai/*_CON
 ## Current priority order
 
 1. Keep the currently working Reader behavior stable.
-2. Finish and verify the experimental Silero integration.
+2. Keep the base APK lean; do not add large local runtimes or models to the default build.
 3. Add characterization tests around logic that will be extracted.
 4. Reduce `ReaderActivity.kt` in several safe passes.
 5. Reduce `SettingsActivity.kt` in several safe passes.
