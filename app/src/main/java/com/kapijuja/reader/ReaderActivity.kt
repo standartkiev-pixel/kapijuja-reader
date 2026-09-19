@@ -24,6 +24,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.PopupMenu
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -45,9 +46,10 @@ class ReaderActivity : Activity() {
     private lateinit var voiceButton: Button
     private lateinit var speedButton: Button
     private lateinit var saveAudioButton: Button
-    private lateinit var saveRow: LinearLayout
     private lateinit var editorToolbar: LinearLayout
     private lateinit var editorListenButton: Button
+    private lateinit var editorEngineButton: Button
+    private lateinit var editorVoiceButton: Button
     private lateinit var grokStressButton: Button
     private lateinit var grokEditToolsButton: Button
     private var sourceView: TextView? = null
@@ -317,7 +319,49 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorListenButton, primary = true)
         editorToolbar.addView(
             editorListenButton,
-            LinearLayout.LayoutParams(dp(58), dp(38)).apply { marginEnd = dp(5) }
+            LinearLayout.LayoutParams(dp(42), dp(36)).apply { marginEnd = dp(4) }
+        )
+
+        editorEngineButton = Button(this).apply {
+            text = "TTS ▾"
+            textSize = 11f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(3), 0, dp(3), 0)
+            contentDescription = t("Движок", "Silnik", "Engine")
+            setOnClickListener {
+                if (isPlaying) pauseSpeech()
+                ReaderPopupMenus.showEngine(this@ReaderActivity, this) {
+                    updateEngineLabels()
+                }
+            }
+        }
+        KapijujaUiTheme.button(this, editorEngineButton)
+        editorToolbar.addView(
+            editorEngineButton,
+            LinearLayout.LayoutParams(dp(60), dp(36)).apply { marginEnd = dp(4) }
+        )
+
+        editorVoiceButton = Button(this).apply {
+            text = "Voice ▾"
+            textSize = 11f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(3), 0, dp(3), 0)
+            contentDescription = t("Голос", "Głos", "Voice")
+            setOnClickListener {
+                if (isPlaying) pauseSpeech()
+                ReaderPopupMenus.showVoice(this@ReaderActivity, this) {
+                    updateEngineLabels()
+                }
+            }
+        }
+        KapijujaUiTheme.button(this, editorVoiceButton)
+        editorToolbar.addView(
+            editorVoiceButton,
+            LinearLayout.LayoutParams(dp(64), dp(36)).apply { marginEnd = dp(4) }
         )
 
         grokStressButton =
@@ -330,7 +374,7 @@ class ReaderActivity : Activity() {
             )
         editorToolbar.addView(
             grokStressButton,
-            LinearLayout.LayoutParams(dp(46), dp(38)).apply { marginEnd = dp(5) }
+            LinearLayout.LayoutParams(dp(38), dp(36)).apply { marginEnd = dp(4) }
         )
 
         grokEditToolsButton =
@@ -343,7 +387,7 @@ class ReaderActivity : Activity() {
             )
         editorToolbar.addView(
             grokEditToolsButton,
-            LinearLayout.LayoutParams(dp(82), dp(38)).apply { marginEnd = dp(5) }
+            LinearLayout.LayoutParams(dp(68), dp(36)).apply { marginEnd = dp(4) }
         )
 
         val editorSaveButton = Button(this).apply {
@@ -360,14 +404,14 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorSaveButton)
         editorToolbar.addView(
             editorSaveButton,
-            LinearLayout.LayoutParams(dp(48), dp(38))
+            LinearLayout.LayoutParams(dp(42), dp(36))
         )
         root.addView(
             editorToolbar,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(44)
-            ).apply { topMargin = dp(4); bottomMargin = dp(4) }
+                dp(42)
+            ).apply { topMargin = dp(2); bottomMargin = dp(2) }
         )
 
         contentFrame.addView(
@@ -412,92 +456,145 @@ class ReaderActivity : Activity() {
         player = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.VISIBLE
-            setPadding(dp(7), dp(5), dp(7), dp(5))
+            setPadding(dp(3), dp(2), dp(3), dp(2))
             background = KapijujaUiTheme.panel(
                 this@ReaderActivity,
                 KapijujaUiTheme.PANEL_DARK,
                 KapijujaUiTheme.BLUE,
                 1,
-                18
+                10
             )
         }
 
         val controls = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+            gravity = Gravity.CENTER_VERTICAL
         }
 
         playPause = Button(this).apply {
-            text = t("Слушать", "Listen")
+            text = "▶"
+            textSize = 15f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(2), 0, dp(2), 0)
+            contentDescription = t("Слушать или пауза", "Czytaj lub pauza", "Listen or pause")
             setOnClickListener {
-                if (isPlaying) {
-                    pauseSpeech()
-                } else {
-                    startOrResume()
-                }
+                if (isPlaying) pauseSpeech() else startOrResume()
             }
         }
         KapijujaUiTheme.button(this, playPause, primary = true)
         controls.addView(
             playPause,
-            LinearLayout.LayoutParams(0, dp(46), 1f).apply {
-                marginEnd = dp(7)
-            }
+            LinearLayout.LayoutParams(0, dp(38), 0.66f).apply { marginEnd = dp(3) }
         )
 
         speedButton = Button(this).apply {
             text = "1.0x"
+            textSize = 12f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(2), 0, dp(2), 0)
             setOnClickListener { cycleSpeed() }
         }
         KapijujaUiTheme.button(this, speedButton)
         controls.addView(
             speedButton,
-            LinearLayout.LayoutParams(0, dp(46), 0.65f).apply {
-                marginEnd = dp(7)
-            }
+            LinearLayout.LayoutParams(0, dp(38), 0.82f).apply { marginEnd = dp(3) }
         )
 
         editButton = Button(this).apply {
-            text = t("Редактировать", "Edit")
+            text = "✎"
+            textSize = 18f
+            isAllCaps = false
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            contentDescription = t("Редактировать", "Edytuj", "Edit")
             setOnClickListener {
                 if (editMode) saveEditedText() else enterEditMode()
             }
         }
         KapijujaUiTheme.button(this, editButton)
-        controls.addView(editButton, LinearLayout.LayoutParams(0, dp(46), 1.15f))
-        player.addView(controls)
-
-        val voiceRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, 0)
-        }
+        controls.addView(
+            editButton,
+            LinearLayout.LayoutParams(0, dp(38), 0.62f).apply { marginEnd = dp(3) }
+        )
 
         engineButton = Button(this).apply {
-            text = t("Движок", "Engine")
+            text = "TTS ▾"
+            textSize = 11f
+            isAllCaps = false
+            maxLines = 1
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(3), 0, dp(3), 0)
+            contentDescription = t("Движок", "Silnik", "Engine")
             setOnClickListener {
-                pauseSpeech()
-                startActivity(Intent(this@ReaderActivity, SettingsActivity::class.java))
+                if (isPlaying) pauseSpeech()
+                ReaderPopupMenus.showEngine(this@ReaderActivity, this) {
+                    updateEngineLabels()
+                }
             }
         }
         KapijujaUiTheme.button(this, engineButton)
-        voiceRow.addView(
+        controls.addView(
             engineButton,
-            LinearLayout.LayoutParams(0, dp(42), 1f).apply {
-                marginEnd = dp(7)
-            }
+            LinearLayout.LayoutParams(0, dp(38), 1.12f).apply { marginEnd = dp(3) }
         )
 
         voiceButton = Button(this).apply {
-            text = t("Голос", "Voice")
+            text = "Voice ▾"
+            textSize = 11f
+            isAllCaps = false
+            maxLines = 1
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(3), 0, dp(3), 0)
+            contentDescription = t("Голос", "Głos", "Voice")
             setOnClickListener {
-                pauseSpeech()
-                startActivity(Intent(this@ReaderActivity, SettingsActivity::class.java))
+                if (isPlaying) pauseSpeech()
+                ReaderPopupMenus.showVoice(this@ReaderActivity, this) {
+                    updateEngineLabels()
+                }
             }
         }
         KapijujaUiTheme.button(this, voiceButton)
-        voiceRow.addView(voiceButton, LinearLayout.LayoutParams(0, dp(42), 1f))
-        player.addView(voiceRow)
+        controls.addView(
+            voiceButton,
+            LinearLayout.LayoutParams(0, dp(38), 1.12f).apply { marginEnd = dp(3) }
+        )
+
+        saveAudioButton = Button(this).apply {
+            text = t("Файл ▾", "Plik ▾", "File ▾")
+            textSize = 11f
+            isAllCaps = false
+            maxLines = 1
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(dp(3), 0, dp(3), 0)
+            contentDescription = t("Сохранение", "Zapisywanie", "Save")
+            setOnClickListener {
+                if (exportInProgress) {
+                    cancelAudioExport()
+                } else {
+                    showSaveMenu(this)
+                }
+            }
+        }
+        KapijujaUiTheme.button(this, saveAudioButton)
+        controls.addView(
+            saveAudioButton,
+            LinearLayout.LayoutParams(0, dp(38), 0.86f)
+        )
+        player.addView(
+            controls,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(40)
+            )
+        )
 
         exportProgress = ProgressBar(
             this,
@@ -513,70 +610,66 @@ class ReaderActivity : Activity() {
             exportProgress,
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(16)
-            ).apply {
-                topMargin = dp(7)
-            }
+                dp(8)
+            ).apply { topMargin = dp(2) }
         )
 
         progressText = TextView(this).apply {
-            textSize = 13f
+            textSize = 11f
+            maxLines = 1
             visibility = View.GONE
-            setPadding(dp(3), dp(3), dp(3), 0)
+            setPadding(dp(3), dp(1), dp(3), 0)
         }
         KapijujaUiTheme.secondary(progressText)
         player.addView(progressText)
 
-        saveRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, dp(4), 0, 0)
-        }
-
-        val saveText = Button(this).apply {
-            text = t("Сохранить файл", "Save text")
-            textSize = 14f
-            setOnClickListener { requestTextExport() }
-        }
-        KapijujaUiTheme.button(this, saveText)
-        saveRow.addView(
-            saveText,
-            LinearLayout.LayoutParams(0, dp(42), 1f).apply {
-                marginEnd = dp(7)
-            }
-        )
-
-        saveAudioButton = Button(this).apply {
-            text = t("Сохранить MP3", "Save MP3")
-            textSize = 14f
-            setOnClickListener {
-                if (exportInProgress) cancelAudioExport() else requestAudioExport()
-            }
-        }
-        KapijujaUiTheme.button(
-            this,
-            saveAudioButton
-        )
-        saveRow.addView(
-            saveAudioButton,
-            LinearLayout.LayoutParams(
-                0,
-                dp(42),
-                1f
-            )
-        )
-        player.addView(saveRow)
-
         resultText = TextView(this).apply {
-            textSize = 13f
-            setPadding(dp(3), dp(3), dp(3), 0)
+            textSize = 11f
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(3), dp(1), dp(3), 0)
         }
         KapijujaUiTheme.secondary(resultText)
         player.addView(resultText)
 
-        root.addView(player)
+        root.addView(
+            player,
+            root.indexOfChild(scrollHost)
+        )
         setContentView(root)
         updateEngineLabels()
+    }
+
+    private fun showSaveMenu(anchor: View) {
+        val engine = SettingsStore.engine(this)
+        val wav =
+            engine == SettingsStore.ENGINE_GOOGLE ||
+                engine.startsWith("android:")
+        val audioLabel =
+            if (wav) {
+                t("Сохранить WAV", "Zapisz WAV", "Save WAV")
+            } else {
+                t("Сохранить MP3", "Zapisz MP3", "Save MP3")
+            }
+
+        PopupMenu(this, anchor).apply {
+            menu.add(
+                0,
+                1,
+                0,
+                t("Сохранить текст", "Zapisz tekst", "Save text")
+            )
+            menu.add(0, 2, 1, audioLabel)
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    1 -> requestTextExport()
+                    2 -> requestAudioExport()
+                    else -> return@setOnMenuItemClickListener false
+                }
+                true
+            }
+            show()
+        }
     }
 
     private fun installTapStart() {
@@ -630,7 +723,7 @@ class ReaderActivity : Activity() {
         player.visibility = View.VISIBLE
         highlight(index)
         listenButton.text = if (wasPlaying) "Готовится…" else "Слушать отсюда"
-        playPause.text = t("Продолжить", "Resume")
+        playPause.text = "▶"
         resultText.text =
             t(
                 "Старт: предложение ${index + 1} из ${segments.size}",
@@ -666,7 +759,6 @@ class ReaderActivity : Activity() {
             SettingsStore.ENGINE_OPENAI -> startOpenAiWithGuard()
             SettingsStore.ENGINE_XAI -> startXaiWithGuard()
             SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
-            SettingsStore.ENGINE_SILERO -> startSileroFrom(currentSegment)
             SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
             SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
             else -> {
@@ -975,9 +1067,6 @@ class ReaderActivity : Activity() {
         startCloudFrom(index, SettingsStore.ENGINE_EDGE)
     }
 
-    private fun startSileroFrom(index: Int) {
-        startCloudFrom(index, SettingsStore.ENGINE_SILERO)
-    }
 
     private fun startAzureFrom(index: Int) {
         val key = SettingsStore.azureSpeechKey(this)
@@ -1039,12 +1128,6 @@ class ReaderActivity : Activity() {
                     t("Google Gemini: буферизация…", "Google Gemini: buforowanie…", "Google Gemini: buffering…")
                 SettingsStore.ENGINE_XAI ->
                     t("xAI Grok: буферизация…", "xAI Grok: buforowanie…", "xAI Grok: buffering…")
-                SettingsStore.ENGINE_SILERO ->
-                    t(
-                        "Silero v5.5: подготовка локального голоса…",
-                        "Silero v5.5: przygotowanie lokalnego głosu…",
-                        "Silero v5.5: preparing local voice…"
-                    )
                 else ->
                     t("OpenAI: буферизация…", "OpenAI: buforowanie…", "OpenAI: buffering…")
             }
@@ -1289,7 +1372,6 @@ class ReaderActivity : Activity() {
                     SettingsStore.ENGINE_AZURE -> "Azure Speech • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
                     SettingsStore.ENGINE_GOOGLE -> "Google Gemini • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
                     SettingsStore.ENGINE_XAI -> "xAI Grok • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    SettingsStore.ENGINE_SILERO -> "Silero v5.5 • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
                     else -> "TTS"
                 }
 
@@ -1420,8 +1502,6 @@ class ReaderActivity : Activity() {
                 t("Чтение завершено • Azure Speech", "Czytanie zakończone • Azure Speech", "Reading complete • Azure Speech")
             SettingsStore.ENGINE_GOOGLE ->
                 t("Чтение завершено • Google Gemini TTS", "Czytanie zakończone • Google Gemini TTS", "Reading complete • Google Gemini TTS")
-            SettingsStore.ENGINE_SILERO ->
-                t("Чтение завершено • Silero v5.5 локально", "Czytanie zakończone • Silero v5.5 lokalnie", "Reading complete • Silero v5.5 local")
             else ->
                 t("Чтение завершено.", "Czytanie zakończone.", "Reading complete.")
         }
@@ -1444,7 +1524,7 @@ class ReaderActivity : Activity() {
 
     private fun showPlaybackPlayingUi() {
         if (::playPause.isInitialized) {
-            PlaybackBusyIndicator.stop(playPause, t("Пауза", "Pause"))
+            PlaybackBusyIndicator.stop(playPause, "Ⅱ")
         }
         if (::editorListenButton.isInitialized) {
             PlaybackBusyIndicator.stop(editorListenButton, if (editMode) "‖" else "▶")
@@ -1467,16 +1547,7 @@ class ReaderActivity : Activity() {
         if (wasPlaying) syncPlaybackNotification()
 
         if (::playPause.isInitialized) {
-            playPause.text =
-                if (editMode) {
-                    t(
-                        "Слушать от курсора",
-                        "Czytaj od kursora",
-                        "Listen from cursor"
-                    )
-                } else {
-                    t("Продолжить", "Resume")
-                }
+            playPause.text = "▶"
         }
         if (::listenButton.isInitialized && !editMode) listenButton.text = "Слушать"
 
@@ -1521,7 +1592,7 @@ class ReaderActivity : Activity() {
         sourceView?.visibility = View.GONE
         editorToolbar.visibility = View.VISIBLE
         player.visibility = View.GONE
-        editButton.text = t("Сохранить", "Save")
+        editButton.text = "✓"
         playPause.isEnabled = true
         playPause.text =
             t(
@@ -1532,7 +1603,6 @@ class ReaderActivity : Activity() {
         engineButton.isEnabled = true
         voiceButton.isEnabled = true
         saveAudioButton.isEnabled = false
-        saveRow.visibility = View.GONE
         updateEditorToolVisibility()
         editor.requestFocus()
         scrollEditorToOffset(safeOffset)
@@ -1576,13 +1646,12 @@ class ReaderActivity : Activity() {
         editor.visibility = View.GONE
         textView.visibility = View.VISIBLE
         editMode = false
-        editButton.text = t("Редактировать", "Edit")
+        editButton.text = "✎"
         playPause.isEnabled = true
-        playPause.text = t("Слушать", "Listen")
+        playPause.text = "▶"
         engineButton.isEnabled = true
         voiceButton.isEnabled = true
         saveAudioButton.isEnabled = true
-        saveRow.visibility = View.VISIBLE
         editorToolbar.visibility = View.GONE
         sourceView?.visibility = if (source.isNotBlank()) View.VISIBLE else View.GONE
         player.visibility = View.VISIBLE
@@ -1730,7 +1799,6 @@ class ReaderActivity : Activity() {
                     engine == SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
                     engine == SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
                     engine == SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
-                    engine == SettingsStore.ENGINE_SILERO -> startSileroFrom(currentSegment)
                     engine.startsWith("android:") -> startAndroidTts()
                 }
             }
@@ -1739,45 +1807,40 @@ class ReaderActivity : Activity() {
 
     private fun updateEngineLabels() {
         val engine = SettingsStore.engine(this)
-        engineButton.text =
+        val engineLabel =
             when {
                 engine == SettingsStore.ENGINE_OPENAI -> "OpenAI"
-                engine == SettingsStore.ENGINE_XAI -> "xAI Grok"
+                engine == SettingsStore.ENGINE_XAI -> "Grok"
                 engine == SettingsStore.ENGINE_EDGE -> "Edge"
-                engine == SettingsStore.ENGINE_SILERO -> "Silero"
                 engine == SettingsStore.ENGINE_AZURE -> "Azure"
-                engine == SettingsStore.ENGINE_GOOGLE -> "Google Gemini"
-                engine == SettingsStore.DEFAULT_ENGINE -> "Android TTS"
+                engine == SettingsStore.ENGINE_GOOGLE -> "Gemini"
+                engine == SettingsStore.DEFAULT_ENGINE -> "Android"
+                engine == SettingsStore.ENGINE_ANDROID_SYSTEM -> "System"
+                engine == SettingsStore.ENGINE_RHVOICE -> "RHVoice"
                 engine.startsWith("android:") ->
-                    engine.removePrefix("android:").substringAfterLast('.').take(18)
-                else -> t("Движок", "Engine")
+                    engine.removePrefix("android:").substringAfterLast('.').take(9)
+                else -> t("Движок", "Silnik", "Engine")
             }
+
+        engineButton.text = "${engineLabel.take(9)} ▾"
+        editorEngineButton.text = "${engineLabel.take(7)} ▾"
 
         if (::saveAudioButton.isInitialized) {
             saveAudioButton.text =
                 if (exportInProgress) {
-                    t("Отменить $currentExportFormat", "Anuluj $currentExportFormat", "Cancel $currentExportFormat")
-                } else if (
-                    engine == SettingsStore.ENGINE_GOOGLE ||
-                    engine == SettingsStore.ENGINE_SILERO ||
-                    engine.startsWith("android:")
-                ) {
-                    t("Сохранить WAV", "Zapisz WAV", "Save WAV")
+                    "✕ $currentExportFormat"
                 } else {
-                    t("Сохранить MP3", "Zapisz MP3", "Save MP3")
+                    t("Файл ▾", "Plik ▾", "File ▾")
                 }
         }
 
         val voice = SettingsStore.voice(this)
-        val voices =
-            if (engine == SettingsStore.ENGINE_SILERO) {
-                SileroRuntime.voiceChoices(this)
-            } else {
-                VoiceCatalog.staticVoices(engine)
-            }
-        voiceButton.text =
-            voices.firstOrNull { it.id == voice }?.label?.take(20)
-                ?: voice.ifBlank { t("Голос", "Voice") }.take(20)
+        val voices = VoiceCatalog.staticVoices(engine)
+        val voiceLabel =
+            voices.firstOrNull { it.id == voice }?.label
+                ?: voice.ifBlank { t("Голос", "Głos", "Voice") }
+        voiceButton.text = "${voiceLabel.take(10)} ▾"
+        editorVoiceButton.text = "${voiceLabel.take(8)} ▾"
 
         updateEditorToolVisibility()
     }
@@ -1789,7 +1852,7 @@ class ReaderActivity : Activity() {
         exportInProgress = true
         currentExportFormat = format
         saveAudioButton.isEnabled = true
-        saveAudioButton.text = t("Отменить $format", "Anuluj $format", "Cancel $format")
+        saveAudioButton.text = "✕ $format"
         exportProgress.visibility = View.VISIBLE
         progressText.visibility = View.VISIBLE
         exportProgress.progress = 0
@@ -1810,7 +1873,7 @@ class ReaderActivity : Activity() {
         if (!exportInProgress) return
         exportCancelled = true
         saveAudioButton.isEnabled = false
-        saveAudioButton.text = t("Отменяется…", "Anulowanie…", "Cancelling…")
+        saveAudioButton.text = "…"
         progressText.text = t("Отмена создания файла…", "Anulowanie tworzenia pliku…", "Cancelling audio export…")
         tts?.stop()
         ttsExportLatches.values.forEach { it.countDown() }

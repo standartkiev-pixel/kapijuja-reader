@@ -1,8 +1,8 @@
-KAPIJUJA READER — CURRENT HANDOFF — 2026-09-17
+KAPIJUJA READER — CURRENT HANDOFF — updated 2026-09-19
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
-Current test target: 0.1.10 / versionCode 11
+Current test target: 0.1.11 / versionCode 12
 
 START HERE
 1. AI_CONTEXT_INDEX.md
@@ -15,9 +15,17 @@ Do not preload PROJECT_HANDOFF.md. It is historical/search-only material.
 
 CURRENT PRODUCT STATE
 
-TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini, xAI Grok and experimental local Silero.
+TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini and xAI Grok.
+
+Silero v5.5 and the PyTorch Android runtime were removed from the base app on 2026-09-19. The local Silero path was broken on-device by a TorchScript argument-type mismatch and made the APK very large. The build no longer downloads the Silero model asset and no longer depends on org.pytorch:pytorch_android. Do not re-add a large local runtime/model to the default APK without a separate optional-download or flavor design.
 
 xAI Grok TTS supports playback and MP3 export. Grok-specific pronunciation/delivery logic lives in GrokEditorMarkup.kt and GrokEditorToolbar.kt rather than ReaderActivity.
+
+COMPACT TOP CONTROLS
+
+The old large multi-row bottom control panel was replaced by a compact top control strip above the document. Playback, speed, edit, engine, voice and file/export controls are compact; engine and voice use popup menus. Export progress/status stays compact and long diagnostics are truncated instead of expanding the whole panel.
+
+Edit mode keeps its own compact top strip above the editor, including play, engine, voice, Grok tools and save. This keeps Save reachable while the Android keyboard is open and the user edits the bottom of a long document.
 
 EDITOR
 

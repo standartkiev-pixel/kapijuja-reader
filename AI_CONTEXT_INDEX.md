@@ -29,9 +29,6 @@ Read `docs/ai/SETTINGS_CONTEXT.md`. Search `SettingsActivity.kt` and open only t
 ### Library / import / large-document safety
 Start with `LibraryStore.kt`, `ReaderLimits.kt`, `DocumentTextExtractor.kt`, `HtmlExtractor.kt`, and the relevant `MainActivity.kt` region. Document bodies are separate `.txt` files; `index.json` is metadata only. SQLite is not currently required. Do not load playback/export code unless the change crosses that boundary.
 
-### Silero
-Start with `SileroRuntime.kt` and `docs/ai/TTS_CONTEXT.md`. Then inspect only the Reader/Settings call sites that invoke Silero.
-
 ## Large legacy files
 
 Current migration targets:

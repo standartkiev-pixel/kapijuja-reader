@@ -15,7 +15,6 @@ The project currently has these TTS routes:
 - OpenAI TTS — `OpenAiTtsClient.kt`.
 - Google Gemini TTS — `GoogleGeminiTtsClient.kt`.
 - xAI Grok TTS — `XaiTtsClient.kt`.
-- experimental local Silero v5.5 — `SileroRuntime.kt`.
 
 ## Files to open first
 
@@ -61,7 +60,6 @@ Settings should store user configuration, not synthesize audio.
 - Edge is treated as a no-direct-user-charge route but depends on Microsoft's service behavior.
 - Azure uses the user's Speech key and region.
 - Google Gemini TTS currently synthesizes PCM and exports WAV through the project's WAV tools.
-- Silero is experimental local inference; keep it isolated from cloud-client assumptions.
 - Long audio export must stream/chunk rather than accumulate an entire book in RAM.
 
 ## Architecture progress

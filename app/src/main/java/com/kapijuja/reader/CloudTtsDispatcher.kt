@@ -17,8 +17,6 @@ object CloudTtsDispatcher {
                 "Gacrux"
             SettingsStore.ENGINE_XAI ->
                 "orion"
-            SettingsStore.ENGINE_SILERO ->
-                "eugene"
             else ->
                 "cedar"
         }
@@ -81,14 +79,6 @@ object CloudTtsDispatcher {
                     context = context
                 )
 
-            SettingsStore.ENGINE_SILERO ->
-                SileroRuntime.synthesizeWav(
-                    context = context,
-                    text = text,
-                    speaker = voice,
-                    speed = speed
-                )
-
             else ->
                 error("Unsupported cloud engine: $engine")
         }
@@ -119,8 +109,6 @@ object CloudTtsDispatcher {
                 CloudAudioSpec("google", "wav")
             SettingsStore.ENGINE_XAI ->
                 CloudAudioSpec("xai", "mp3")
-            SettingsStore.ENGINE_SILERO ->
-                CloudAudioSpec("silero", "wav")
             else ->
                 CloudAudioSpec("openai", "mp3")
         }

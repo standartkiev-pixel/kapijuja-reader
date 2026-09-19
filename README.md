@@ -34,7 +34,6 @@ The repository intentionally prevents already-oversized legacy source files from
 - Microsoft Azure Speech
 - OpenAI TTS
 - Google Gemini TTS
-- experimental local Silero TTS v5.5
 
 ## Peace statement / Заявление о мире
 

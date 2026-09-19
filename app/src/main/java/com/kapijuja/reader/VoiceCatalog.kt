@@ -124,7 +124,6 @@ object VoiceCatalog {
     fun defaultVoice(engine: String): String = when (engine) {
         SettingsStore.DEFAULT_ENGINE -> SettingsStore.DEFAULT_GOOGLE_ANDROID_VOICE
         SettingsStore.ENGINE_OPENAI -> "cedar"
-        SettingsStore.ENGINE_SILERO -> "eugene"
         SettingsStore.ENGINE_EDGE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_AZURE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_GOOGLE -> "Gacrux"
