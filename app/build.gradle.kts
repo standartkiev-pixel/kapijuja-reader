@@ -11,15 +11,8 @@ android {
         applicationId = "com.kapijuja.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 11
-        versionName = "0.1.10"
-
-        // Experimental Silero/PyTorch build: the current test device and modern
-        // Android phones are arm64. Keeping one ABI avoids multiplying the
-        // large native runtime inside this test APK. Revisit with ABI splits later.
-        ndk {
-            abiFilters += listOf("arm64-v8a")
-        }
+        versionCode = 12
+        versionName = "0.1.11"
     }
 
     signingConfigs {
@@ -54,6 +47,5 @@ android {
 
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("org.pytorch:pytorch_android:2.1.0")
     testImplementation("junit:junit:4.13.2")
 }
