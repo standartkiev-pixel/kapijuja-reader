@@ -22,7 +22,6 @@ object SettingsStore {
     const val ENGINE_ANDROID_SYSTEM = "android:default"
     const val DEFAULT_GOOGLE_ANDROID_VOICE = "ru-ru-x-rud-network"
     const val ENGINE_OPENAI = "cloud:openai"
-    const val ENGINE_SILERO = "local:silero"
     const val ENGINE_EDGE = "cloud:edge"
     const val ENGINE_AZURE = "cloud:azure"
     const val ENGINE_GOOGLE = "cloud:google"
