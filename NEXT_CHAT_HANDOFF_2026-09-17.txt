@@ -2,7 +2,7 @@ KAPIJUJA READER — CURRENT HANDOFF — updated 2026-09-19
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
-Current test target: 0.1.11 / versionCode 12
+Current test target: 0.1.12 / versionCode 13
 
 START HERE
 1. AI_CONTEXT_INDEX.md
@@ -26,6 +26,18 @@ COMPACT TOP CONTROLS
 The old large multi-row bottom control panel was replaced by a compact top control strip above the document. Playback, speed, edit, engine, voice and file/export controls are compact; engine and voice use popup menus. Export progress/status stays compact and long diagnostics are truncated instead of expanding the whole panel.
 
 Edit mode keeps its own compact top strip above the editor, including play, engine, voice, Grok tools and save. This keeps Save reachable while the Android keyboard is open and the user edits the bottom of a long document.
+
+EDITOR SEARCH
+
+Edit mode now has a top-only search workflow for proofreading long generated audio/text:
+- a magnifier button is in the compact editor toolbar;
+- it opens a compact search row immediately below the top toolbar;
+- previous/next search wrap through the full unsaved editor text;
+- the found phrase is selected and auto-scrolled into view;
+- search is case-insensitive;
+- closing search returns focus to the editor;
+- no search/menu controls are placed at the bottom where the keyboard can cover them.
+Search behavior is isolated in ReaderEditorSearchController.kt with unit tests for forward/backward wrapping.
 
 EDITOR
 
