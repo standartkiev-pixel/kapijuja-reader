@@ -15,10 +15,22 @@ Use this routing note for tasks involving reading position, highlighting, playba
 - `ExportBridge.kt` / `ReaderExportService.kt` — export control and foreground service.
 - `WavTools.kt` — WAV/PCM utilities.
 - provider clients — cloud TTS protocol and provider-specific splitting.
-- `SileroRuntime.kt` — local Silero inference.
 - `GrokEditorMarkup.kt` — pure stress-mark and Grok speech-tag transformations plus balanced tag/chunk helpers.
 - `GrokEditorToolbar.kt` — compact Grok editor controls/menu; keep Grok-specific editor UI out of `ReaderActivity.kt`.
 - `ReaderLimits.kt` — document/source/library safety ceilings.
+
+## Edit-mode search
+
+Edit mode has a compact search control at the top of the screen, never at the bottom.
+
+- the magnifier button lives in the compact editor toolbar;
+- opening it reveals a small search row directly under that toolbar and above the document;
+- search uses the current unsaved editor text;
+- matching is case-insensitive;
+- previous/next wrap around the document so repeated corrections can be visited in sequence;
+- a found match is selected in the editor and the document scrolls to it;
+- closing search returns focus to the editor without moving controls below the keyboard;
+- search logic/UI lives in `ReaderEditorSearchController.kt`, not in the legacy ReaderActivity.
 
 ## Edit-mode playback
 
