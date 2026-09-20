@@ -55,7 +55,6 @@ Do not rewrite `ReaderActivity.kt` or `SettingsActivity.kt` from scratch.
 - playback state and orchestration;
 - Android TTS adapter;
 - cloud/local chunk playback coordinator;
-- Silero playback adapter;
 - audio export coordinator;
 - progress/cancellation state;
 - text highlighting/autoscroll helpers.
