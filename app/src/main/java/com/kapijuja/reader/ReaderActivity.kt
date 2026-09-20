@@ -50,6 +50,7 @@ class ReaderActivity : Activity() {
     private lateinit var editorListenButton: Button
     private lateinit var editorEngineButton: Button
     private lateinit var editorVoiceButton: Button
+    private lateinit var editorSearchController: ReaderEditorSearchController
     private lateinit var grokStressButton: Button
     private lateinit var grokEditToolsButton: Button
     private var sourceView: TextView? = null
@@ -288,6 +289,13 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.input(this, editor)
         editor.setPadding(editor.paddingLeft, editor.paddingTop, dp(30), editor.paddingBottom)
 
+        editorSearchController =
+            ReaderEditorSearchController(
+                activity = this,
+                editor = editor,
+                scrollToOffset = { offset -> scrollEditorToOffset(offset) }
+            )
+
         editorToolbar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -319,7 +327,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorListenButton, primary = true)
         editorToolbar.addView(
             editorListenButton,
-            LinearLayout.LayoutParams(dp(42), dp(36)).apply { marginEnd = dp(4) }
+            LinearLayout.LayoutParams(dp(38), dp(36)).apply { marginEnd = dp(3) }
         )
 
         editorEngineButton = Button(this).apply {
@@ -340,7 +348,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorEngineButton)
         editorToolbar.addView(
             editorEngineButton,
-            LinearLayout.LayoutParams(dp(60), dp(36)).apply { marginEnd = dp(4) }
+            LinearLayout.LayoutParams(dp(52), dp(36)).apply { marginEnd = dp(3) }
         )
 
         editorVoiceButton = Button(this).apply {
@@ -361,7 +369,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorVoiceButton)
         editorToolbar.addView(
             editorVoiceButton,
-            LinearLayout.LayoutParams(dp(64), dp(36)).apply { marginEnd = dp(4) }
+            LinearLayout.LayoutParams(dp(54), dp(36)).apply { marginEnd = dp(3) }
         )
 
         grokStressButton =
@@ -374,7 +382,7 @@ class ReaderActivity : Activity() {
             )
         editorToolbar.addView(
             grokStressButton,
-            LinearLayout.LayoutParams(dp(38), dp(36)).apply { marginEnd = dp(4) }
+            LinearLayout.LayoutParams(dp(34), dp(36)).apply { marginEnd = dp(3) }
         )
 
         grokEditToolsButton =
@@ -387,7 +395,26 @@ class ReaderActivity : Activity() {
             )
         editorToolbar.addView(
             grokEditToolsButton,
-            LinearLayout.LayoutParams(dp(68), dp(36)).apply { marginEnd = dp(4) }
+            LinearLayout.LayoutParams(dp(58), dp(36)).apply { marginEnd = dp(3) }
+        )
+
+        val editorSearchButton = Button(this).apply {
+            text = "🔎"
+            textSize = 15f
+            contentDescription = t("Поиск", "Szukaj", "Search")
+            minWidth = 0
+            minimumWidth = 0
+            setPadding(0, 0, 0, 0)
+            isFocusable = false
+            isFocusableInTouchMode = false
+            setOnClickListener {
+                editorSearchController.toggle()
+            }
+        }
+        KapijujaUiTheme.button(this, editorSearchButton)
+        editorToolbar.addView(
+            editorSearchButton,
+            LinearLayout.LayoutParams(dp(38), dp(36)).apply { marginEnd = dp(3) }
         )
 
         val editorSaveButton = Button(this).apply {
@@ -404,7 +431,7 @@ class ReaderActivity : Activity() {
         KapijujaUiTheme.button(this, editorSaveButton)
         editorToolbar.addView(
             editorSaveButton,
-            LinearLayout.LayoutParams(dp(42), dp(36))
+            LinearLayout.LayoutParams(dp(38), dp(36))
         )
         root.addView(
             editorToolbar,
@@ -412,6 +439,13 @@ class ReaderActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 dp(42)
             ).apply { topMargin = dp(2); bottomMargin = dp(2) }
+        )
+        root.addView(
+            editorSearchController.view,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dp(42)
+            ).apply { bottomMargin = dp(2) }
         )
 
         contentFrame.addView(
@@ -1591,6 +1625,7 @@ class ReaderActivity : Activity() {
         editor.visibility = View.VISIBLE
         sourceView?.visibility = View.GONE
         editorToolbar.visibility = View.VISIBLE
+        editorSearchController.resetAndHide()
         player.visibility = View.GONE
         editButton.text = "✓"
         playPause.isEnabled = true
@@ -1653,6 +1688,7 @@ class ReaderActivity : Activity() {
         voiceButton.isEnabled = true
         saveAudioButton.isEnabled = true
         editorToolbar.visibility = View.GONE
+        editorSearchController.resetAndHide()
         sourceView?.visibility = if (source.isNotBlank()) View.VISIBLE else View.GONE
         player.visibility = View.VISIBLE
         hideEditorKeyboard()
