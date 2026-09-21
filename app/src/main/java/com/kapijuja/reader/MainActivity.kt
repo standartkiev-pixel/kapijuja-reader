@@ -298,7 +298,7 @@ class MainActivity : Activity() {
             ).apply { bottomMargin = dp(12) })
         }
 
-        option(t("Открыть документ", "Open document")) { chooseDocument() }
+        option(t("Открыть PDF / Word / TXT", "Otwórz PDF / Word / TXT", "Open PDF / Word / TXT")) { chooseDocument() }
         option(t("Ввести текст", "Enter text")) { showManualTextDialog() }
         option(t("Вставить ссылку", "Paste link")) { showLinkDialog() }
 
@@ -315,6 +315,21 @@ class MainActivity : Activity() {
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
+            putExtra(
+                Intent.EXTRA_MIME_TYPES,
+                arrayOf(
+                    "application/pdf",
+                    "application/msword",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "text/plain",
+                    "text/markdown",
+                    "text/html",
+                    "text/csv",
+                    "application/json",
+                    "application/xml",
+                    "text/xml"
+                )
+            )
         }
         startActivityForResult(intent, REQ_DOCUMENT)
     }
