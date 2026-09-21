@@ -108,8 +108,11 @@ object DocumentTextExtractor {
         val lower = name.lowercase()
         when {
             lower.endsWith(".pdf") -> return Kind.PDF
-            lower.endsWith(".docx") -> return Kind.DOCX
-            lower.endsWith(".doc") -> return Kind.DOC
+            lower.endsWith(".docx") ||
+                lower.endsWith(".docm") ||
+                lower.endsWith(".dotx") ||
+                lower.endsWith(".dotm") -> return Kind.DOCX
+            lower.endsWith(".doc") || lower.endsWith(".dot") -> return Kind.DOC
             lower.endsWith(".html") || lower.endsWith(".htm") -> return Kind.HTML
             lower.endsWith(".txt") ||
                 lower.endsWith(".md") ||
@@ -122,8 +125,10 @@ object DocumentTextExtractor {
         when (context.contentResolver.getType(uri)?.lowercase()) {
             "application/pdf" -> return Kind.PDF
             "application/msword" -> return Kind.DOC
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ->
-                return Kind.DOCX
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.ms-word.document.macroenabled.12",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+            "application/vnd.ms-word.template.macroenabled.12" -> return Kind.DOCX
             "text/html" -> return Kind.HTML
             "text/plain", "text/markdown", "text/csv", "application/json", "application/xml",
             "text/xml" -> return Kind.TEXT
@@ -403,7 +408,18 @@ object DocumentTextExtractor {
         }
 
         val windows1251 = java.nio.charset.Charset.forName("windows-1251")
-        return bytes.toString(windows1251)
+        val cyrillicCandidate = bytes.toString(windows1251)
+        val letters = cyrillicCandidate.count { it.isLetter() }.coerceAtLeast(1)
+        val cyrillic =
+            cyrillicCandidate.count {
+                it in '\u0400'..'\u04FF'
+            }
+
+        return if (cyrillic * 20 >= letters) {
+            cyrillicCandidate
+        } else {
+            bytes.toString(java.nio.charset.Charset.forName("windows-1250"))
+        }
     }
 
     private fun detectBomlessUtf16(
