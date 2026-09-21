@@ -11,8 +11,8 @@ android {
         applicationId = "com.kapijuja.reader"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "0.1.12"
+        versionCode = 14
+        versionName = "0.1.13"
     }
 
     signingConfigs {
@@ -47,5 +47,7 @@ android {
 
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    implementation("org.apache.poi:poi-scratchpad:5.5.1")
     testImplementation("junit:junit:4.13.2")
 }

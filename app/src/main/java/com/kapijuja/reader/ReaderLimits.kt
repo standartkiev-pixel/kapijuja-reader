@@ -10,6 +10,9 @@ object ReaderLimits {
     // Reject pathological source files before readBytes()/ZIP expansion can ask
     // the process for unbounded memory. Normal text/docx books are far smaller.
     const val MAX_SOURCE_BYTES = 64L * 1024L * 1024L
+    // PDFs are copied to a temporary file and parsed with disk-backed PDFBox
+    // scratch storage, so they can safely be larger than in-memory DOC/TXT input.
+    const val MAX_PDF_SOURCE_BYTES = 256L * 1024L * 1024L
     const val MAX_DOCX_XML_BYTES = 32L * 1024L * 1024L
 
     // The actual document bodies live in separate .txt files. The JSON index is

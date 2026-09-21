@@ -25,6 +25,13 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Create temporary debug signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          keytool -genkeypair             -keystore "$HOME/.android/debug.keystore"             -storepass android             -alias androiddebugkey             -keypass android             -keyalg RSA             -keysize 2048             -validity 10000             -dname "CN=Kapijuja Reader CI,O=Kapijuja,C=EU"
+
       - name: Prepare Android SDK
         shell: bash
         run: |
@@ -38,5 +45,5 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Run unit tests and compile debug Kotlin
-        run: gradle :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace
+      - name: Run unit tests and assemble debug APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace

@@ -67,6 +67,18 @@ Wrapping tags surround selected text; inline events are inserted at the cursor. 
 
 Do not add a pronunciation dictionary UI unless explicitly requested. Current product direction is explicit per-occurrence correction because identical spelling can need different stress by context.
 
+## Document import
+
+MainActivity exposes one document picker for PDF, Word and text documents. Extraction stays outside the Activity.
+
+- `DocumentTextExtractor.kt` detects format from extension/MIME/signature and routes extraction.
+- `ImportedTextNormalizer.kt` handles paragraph and visual-line normalization.
+- PDF uses pdfbox-android with disk-backed temporary storage and reads the embedded text layer page by page.
+- Legacy `.doc/.dot` uses Apache POI HWPF; OOXML Word files are parsed directly from `word/document.xml`.
+- Text files support UTF-8/UTF-16 plus practical Windows-1251/Windows-1250 fallback decoding.
+- General in-memory source limit is 64 MiB; PDF input may be up to 256 MiB because it is copied to a temporary file.
+- Image-only/scanned PDFs without an embedded text layer are reported as unsupported in this import path; OCR is not bundled.
+
 ## Responsibilities still inside ReaderActivity
 
 The Activity still coordinates screen/lifecycle, tap-to-start, segmentation, editor playback snapshot, Android TTS lifecycle, cloud sequencing, playback state, highlighting and export UI. Extract these gradually rather than growing the Activity.
