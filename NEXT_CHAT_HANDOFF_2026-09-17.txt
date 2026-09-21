@@ -2,7 +2,7 @@ KAPIJUJA READER — CURRENT HANDOFF — updated 2026-09-19
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
-Current test target: 0.1.12 / versionCode 13
+Current test target: 0.1.13 / versionCode 14
 
 START HERE
 1. AI_CONTEXT_INDEX.md
@@ -76,13 +76,26 @@ ReaderFastScroller.kt is a draggable overlay on the right side of the Reader scr
 - It is hidden for short documents.
 - Text/editor right padding leaves room for the thumb.
 
+DOCUMENT IMPORT
+
+The single "Open PDF / Word / TXT" picker now handles the main reading-document formats:
+- PDF uses pdfbox-android and extracts the embedded text layer page by page with disk-backed scratch storage;
+- legacy Word .doc/.dot uses Apache POI HWPF, with Word 6/95 fallback;
+- modern Word .docx/.docm/.dotx/.dotm is parsed from word/document.xml with XmlPullParser;
+- TXT-like input supports UTF-8, UTF-16LE/BE and practical Windows-1251/Windows-1250 fallbacks;
+- PDF visual line wrapping is normalized into readable paragraphs, including conservative de-hyphenation across line breaks;
+- Word paragraph breaks, tabs, explicit breaks and basic table row/cell separation are retained;
+- image-only/scanned PDFs without an embedded text layer are reported as such; OCR is not bundled.
+
+Document import logic stays in DocumentTextExtractor.kt and ImportedTextNormalizer.kt rather than MainActivity.
+
 LARGE-DOCUMENT SAFETY
 
 ReaderLimits.kt centralizes safety ceilings.
 
 - warning threshold: 750,000 characters;
 - hard editable/display document limit: 2,000,000 characters;
-- source stream hard limit: 64 MiB;
+- general source stream hard limit: 64 MiB; PDF source hard limit: 256 MiB using a temporary file;
 - expanded DOCX document.xml hard limit: 32 MiB;
 - library hard item ceiling: 5,000;
 - library metadata index ceiling: 8 MiB;
