@@ -38,5 +38,5 @@ jobs:
         with:
           gradle-version: '8.13'
 
-      - name: Run unit tests and compile debug Kotlin
-        run: gradle :app:testDebugUnitTest :app:compileDebugKotlin --stacktrace
+      - name: Run unit tests and assemble debug APK
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
