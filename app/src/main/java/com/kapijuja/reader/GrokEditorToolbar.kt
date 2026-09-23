@@ -10,41 +10,45 @@ import android.widget.Toast
 /**
  * Android UI adapter for Grok-only text markup tools.
  *
- * The editor keeps the frequent stress action as a dedicated compact button.
- * Less-frequent Grok controls are grouped into a short two-level menu so the
- * toolbar can remain usable while the on-screen keyboard is visible.
+ * The editor keeps the three most frequent actions in one compact dropdown:
+ * short pause, long pause, stress. Less-frequent controls stay in Grok ▾.
  */
 object GrokEditorToolbar {
-    fun createStressButton(
+    fun createQuickButton(
         activity: Activity,
         editor: EditText,
         setResultText: (String) -> Unit,
         pauseIfPlaying: () -> Unit,
         scrollToOffset: (Int) -> Unit
     ): Button {
-        val stressAction =
-            GrokEditorMarkup.actions.first { it.kind == GrokEditorMarkup.Kind.STRESS }
-        return Button(activity).apply {
-            text = "´"
+        val button = Button(activity).apply {
+            text = "▾"
             textSize = 22f
-            contentDescription = GrokEditorMarkup.label(stressAction, UiText.language(activity))
+            contentDescription =
+                tr(
+                    activity,
+                    "Частые команды Grok",
+                    "Częste polecenia Grok",
+                    "Frequent Grok actions"
+                )
             minWidth = 0
             minimumWidth = 0
             setPadding(0, 0, 0, 0)
             visibility = View.GONE
             isFocusable = false
             isFocusableInTouchMode = false
-            setOnClickListener {
-                applyAction(
-                    activity = activity,
-                    editor = editor,
-                    setResultText = setResultText,
-                    action = stressAction,
-                    pauseIfPlaying = pauseIfPlaying,
-                    scrollToOffset = scrollToOffset
-                )
-            }
-        }.also { KapijujaUiTheme.button(activity, it, primary = true) }
+        }
+        KapijujaUiTheme.button(activity, button, primary = true)
+        button.setOnClickListener {
+            showQuickMenu(
+                activity = activity,
+                editor = editor,
+                setResultText = setResultText,
+                pauseIfPlaying = pauseIfPlaying,
+                scrollToOffset = scrollToOffset
+            )
+        }
+        return button
     }
 
     fun create(
@@ -85,7 +89,7 @@ object GrokEditorToolbar {
     }
 
     fun updateVisibility(
-        stressButton: Button,
+        quickButton: Button,
         menuButton: Button,
         editMode: Boolean,
         engine: String
@@ -96,8 +100,44 @@ object GrokEditorToolbar {
             } else {
                 View.GONE
             }
-        stressButton.visibility = visibility
+        quickButton.visibility = visibility
         menuButton.visibility = visibility
+    }
+
+    private fun showQuickMenu(
+        activity: Activity,
+        editor: EditText,
+        setResultText: (String) -> Unit,
+        pauseIfPlaying: () -> Unit,
+        scrollToOffset: (Int) -> Unit
+    ) {
+        val actions = GrokEditorMarkup.frequentActions()
+        val labels =
+            actions
+                .map { GrokEditorMarkup.label(it, UiText.language(activity)) }
+                .toTypedArray()
+
+        AlertDialog.Builder(activity)
+            .setTitle(
+                tr(
+                    activity,
+                    "Часто используемые",
+                    "Najczęściej używane",
+                    "Frequently used"
+                )
+            )
+            .setItems(labels) { _, which ->
+                applyAction(
+                    activity,
+                    editor,
+                    setResultText,
+                    actions[which],
+                    pauseIfPlaying,
+                    scrollToOffset
+                )
+            }
+            .setNegativeButton(tr(activity, "Отмена", "Anuluj", "Cancel"), null)
+            .show()
     }
 
     private fun showMainMenu(
@@ -109,7 +149,6 @@ object GrokEditorToolbar {
     ) {
         val labels =
             arrayOf(
-                tr(activity, "´  Ударение", "´  Akcent", "´  Stress"),
                 tr(
                     activity,
                     "Подача, темп и тон ›",
@@ -118,9 +157,9 @@ object GrokEditorToolbar {
                 ),
                 tr(
                     activity,
-                    "Паузы, дыхание и звуки ›",
-                    "Pauzy, oddech i dźwięki ›",
-                    "Pauses, breath and sounds ›"
+                    "Дыхание и звуки ›",
+                    "Oddech i dźwięki ›",
+                    "Breath and sounds ›"
                 )
             )
 
@@ -128,21 +167,7 @@ object GrokEditorToolbar {
             .setTitle(tr(activity, "Grok — инструменты", "Grok — narzędzia", "Grok tools"))
             .setItems(labels) { _, which ->
                 when (which) {
-                    0 -> {
-                        val stress =
-                            GrokEditorMarkup.actions.first {
-                                it.kind == GrokEditorMarkup.Kind.STRESS
-                            }
-                        applyAction(
-                            activity,
-                            editor,
-                            setResultText,
-                            stress,
-                            pauseIfPlaying,
-                            scrollToOffset
-                        )
-                    }
-                    1 -> showActionList(
+                    0 -> showActionList(
                         activity,
                         editor,
                         setResultText,
@@ -150,7 +175,7 @@ object GrokEditorToolbar {
                         pauseIfPlaying,
                         scrollToOffset
                     )
-                    2 -> showActionList(
+                    1 -> showActionList(
                         activity,
                         editor,
                         setResultText,
@@ -172,7 +197,14 @@ object GrokEditorToolbar {
         pauseIfPlaying: () -> Unit,
         scrollToOffset: (Int) -> Unit
     ) {
-        val actions = GrokEditorMarkup.actions.filter { it.kind == kind }
+        val actions =
+            GrokEditorMarkup.actions.filter {
+                it.kind == kind &&
+                    (
+                        kind != GrokEditorMarkup.Kind.INSERT ||
+                            it.id !in setOf("pause", "long_pause")
+                    )
+            }
         val labels =
             actions
                 .map { GrokEditorMarkup.label(it, UiText.language(activity)) }
@@ -190,9 +222,9 @@ object GrokEditorToolbar {
                 GrokEditorMarkup.Kind.INSERT ->
                     tr(
                         activity,
-                        "Вставить в позицию курсора",
-                        "Wstaw przy kursorze",
-                        "Insert at cursor"
+                        "Дыхание и звуки",
+                        "Oddech i dźwięki",
+                        "Breath and sounds"
                     )
                 else -> tr(activity, "Grok", "Grok", "Grok")
             }
