@@ -15,6 +15,7 @@ Use this routing note for tasks involving reading position, highlighting, playba
 - `ExportBridge.kt` / `ReaderExportService.kt` — export control and foreground service.
 - `WavTools.kt` — WAV/PCM utilities.
 - provider clients — cloud TTS protocol and provider-specific splitting.
+- `CloudPlaybackPolicy.kt` — controls immediate/free prefetch and delayed one-chunk Grok prefetch.
 - `GrokEditorMarkup.kt` — pure stress-mark and Grok speech-tag transformations plus balanced tag/chunk helpers.
 - `GrokEditorToolbar.kt` — compact Grok editor controls/menu; keep Grok-specific editor UI out of `ReaderActivity.kt`.
 - `ReaderLimits.kt` — document/source/library safety ceilings.
@@ -31,6 +32,16 @@ Edit mode has a compact search control at the top of the screen, never at the bo
 - a found match is selected in the editor and the document scrolls to it;
 - closing search returns focus to the editor without moving controls below the keyboard;
 - search logic/UI lives in `ReaderEditorSearchController.kt`, not in the legacy ReaderActivity.
+
+## Frequent Grok editor actions
+
+The compact button in the former dedicated-stress position is now a dropdown for the three most-used actions, in this exact order:
+
+1. short pause;
+2. long pause;
+3. stress.
+
+The secondary `Grok ▾` menu keeps delivery/speed/pitch plus breath/sound actions. Short/long pause are removed from the secondary insert list to avoid duplication. All editor controls remain at the top.
 
 ## Edit-mode playback
 
