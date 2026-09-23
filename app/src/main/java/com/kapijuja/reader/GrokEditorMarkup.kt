@@ -85,6 +85,10 @@ object GrokEditorMarkup {
         Action("hum_tune", "Напев без слов", "Nucenie", "Hum tune", Kind.INSERT, "[hum-tune]")
     )
 
+    fun frequentActions(): List<Action> =
+        listOf("pause", "long_pause", "stress")
+            .map { id -> actions.first { it.id == id } }
+
     fun addStress(
         text: String,
         selectionStart: Int,
