@@ -1259,6 +1259,15 @@ class ReaderActivity : Activity() {
             return
         }
 
+        if (prefetchingCloudSegments.contains(chunk.startSegment)) {
+            listenButton.text = "Готовится…"
+            mainHandler.postDelayed(
+                { playCloudChunk(startIndex, token, engine) },
+                120L
+            )
+            return
+        }
+
         listenButton.text = "Готовится…"
 
         Thread {
