@@ -88,3 +88,17 @@ Prefer this shape:
 7. update this document and the current handoff.
 
 Do not copy a whole existing provider implementation into `ReaderActivity.kt`.
+
+## Grok playback chunking and pauses
+
+Reader playback deliberately keeps Grok requests small instead of generating the full remaining document in one paid request. The normal playback chunk target is about 720 characters.
+
+To reduce audible network gaps without generating the whole book ahead:
+- the current Grok chunk starts playing first;
+- only after about half of its audio duration is played, the next single chunk is prefetched;
+- at most one future chunk is generated ahead;
+- stopping before the halfway point prevents the next request from being sent;
+- if a prefetched request is still running when playback reaches the boundary, Reader waits for that request instead of sending a duplicate paid request.
+
+This preserves the cost-control goal while hiding most request latency between chunks.
+
