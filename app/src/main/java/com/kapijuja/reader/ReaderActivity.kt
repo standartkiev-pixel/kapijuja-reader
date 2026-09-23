@@ -51,7 +51,7 @@ class ReaderActivity : Activity() {
     private lateinit var editorEngineButton: Button
     private lateinit var editorVoiceButton: Button
     private lateinit var editorSearchController: ReaderEditorSearchController
-    private lateinit var grokStressButton: Button
+    private lateinit var grokQuickButton: Button
     private lateinit var grokEditToolsButton: Button
     private var sourceView: TextView? = null
     private lateinit var exportProgress: ProgressBar
@@ -372,8 +372,8 @@ class ReaderActivity : Activity() {
             LinearLayout.LayoutParams(dp(54), dp(36)).apply { marginEnd = dp(3) }
         )
 
-        grokStressButton =
-            GrokEditorToolbar.createStressButton(
+        grokQuickButton =
+            GrokEditorToolbar.createQuickButton(
                 activity = this,
                 editor = editor,
                 setResultText = { value -> resultText.text = value },
@@ -381,7 +381,7 @@ class ReaderActivity : Activity() {
                 scrollToOffset = { offset -> scrollEditorToOffset(offset) }
             )
         editorToolbar.addView(
-            grokStressButton,
+            grokQuickButton,
             LinearLayout.LayoutParams(dp(34), dp(36)).apply { marginEnd = dp(3) }
         )
 
@@ -1259,6 +1259,15 @@ class ReaderActivity : Activity() {
             return
         }
 
+        if (prefetchingCloudSegments.contains(chunk.startSegment)) {
+            listenButton.text = "Готовится…"
+            mainHandler.postDelayed(
+                { playCloudChunk(startIndex, token, engine) },
+                120L
+            )
+            return
+        }
+
         listenButton.text = "Готовится…"
 
         Thread {
@@ -1409,13 +1418,19 @@ class ReaderActivity : Activity() {
                     else -> "TTS"
                 }
 
-            if (!CloudTtsDispatcher.isPaidPrefetchSensitive(engine)) {
-                prefetchCloudChunk(
-                    startIndex = chunk.endSegment + 1,
-                    token = token,
-                    engine = engine
-                )
-            }
+            val nextStart = chunk.endSegment + 1
+            CloudPlaybackPolicy
+                .prefetchDelayMs(engine, mediaPlayer?.duration?.toLong() ?: 0L)
+                ?.let { delay ->
+                    mainHandler.postDelayed(
+                        {
+                            if (token == generationToken && isPlaying) {
+                                prefetchCloudChunk(nextStart, token, engine)
+                            }
+                        },
+                        delay
+                    )
+                }
         } catch (error: Throwable) {
             if (activeTempFile == file) activeTempFile = null
             file.delete()
@@ -1768,9 +1783,9 @@ class ReaderActivity : Activity() {
     }
 
     private fun updateEditorToolVisibility() {
-        if (!::grokEditToolsButton.isInitialized || !::grokStressButton.isInitialized) return
+        if (!::grokEditToolsButton.isInitialized || !::grokQuickButton.isInitialized) return
         GrokEditorToolbar.updateVisibility(
-            stressButton = grokStressButton,
+            quickButton = grokQuickButton,
             menuButton = grokEditToolsButton,
             editMode = editMode,
             engine = SettingsStore.engine(this)

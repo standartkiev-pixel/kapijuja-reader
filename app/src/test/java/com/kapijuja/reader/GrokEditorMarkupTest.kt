@@ -51,6 +51,14 @@ class GrokEditorMarkupTest {
     }
 
     @Test
+    fun frequentActionsUsePriestRequestedOrder() {
+        assertEquals(
+            listOf("pause", "long_pause", "stress"),
+            GrokEditorMarkup.frequentActions().map { it.id }
+        )
+    }
+
+    @Test
     fun wrapSelectionKeepsOriginalSelectionInsideTags() {
         val result = GrokEditorMarkup.wrapSelection("читать медленно", 7, 15, "slow")
         assertEquals("читать <slow>медленно</slow>", result.text)
