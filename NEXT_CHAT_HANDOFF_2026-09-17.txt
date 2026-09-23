@@ -2,7 +2,7 @@ KAPIJUJA READER — CURRENT HANDOFF — updated 2026-09-19
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
-Current test target: 0.1.13 / versionCode 14
+Current test target: 0.1.14 / versionCode 15
 
 START HERE
 1. AI_CONTEXT_INDEX.md
@@ -38,6 +38,21 @@ Edit mode now has a top-only search workflow for proofreading long generated aud
 - closing search returns focus to the editor;
 - no search/menu controls are placed at the bottom where the keyboard can cover them.
 Search behavior is isolated in ReaderEditorSearchController.kt with unit tests for forward/backward wrapping.
+
+GROK QUICK ACTIONS
+
+The old dedicated stress button in the top editor toolbar is now a compact dropdown in the same position. Its frequent-action order is fixed as:
+1. Short pause [pause]
+2. Long pause [long-pause]
+3. Stress
+
+The separate Grok ▾ menu now contains delivery/speed/pitch plus breath/sound actions; short and long pause are not duplicated there.
+
+GROK PLAYBACK GAPS / COST CONTROL
+
+Grok playback remains split into small chunks (normal target about 720 characters) so stopping playback does not cause the whole remaining document to be generated and billed.
+
+The previous audible gaps were caused by xAI being treated as paid-prefetch-sensitive: the next request started only after the current audio ended. Now the Reader starts one next Grok request only after about 50% of the current audio has played. At most one future chunk is generated. If the user stops before halfway, the next request is not sent. If the prefetch is still running at the boundary, Reader waits for it and does not send a duplicate paid request.
 
 EDITOR
 
