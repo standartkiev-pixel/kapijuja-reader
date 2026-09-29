@@ -157,7 +157,7 @@ jobs:
           name: kapijuja-reader-apk
           path: app/build/outputs/apk/debug/kapijuja-reader.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 3
 
       - name: Publish latest test APK
         shell: bash
