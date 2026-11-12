@@ -791,7 +791,9 @@ class ReaderActivity : Activity() {
 
         when (val engine = SettingsStore.engine(this)) {
             SettingsStore.ENGINE_OPENAI -> startOpenAiWithGuard()
-            SettingsStore.ENGINE_XAI -> startXaiWithGuard()
+            SettingsStore.ENGINE_XAI,
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD -> startPerCharWithGuard(engine)
             SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
             SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
             SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
@@ -1027,45 +1029,46 @@ class ReaderActivity : Activity() {
             .show()
     }
 
-    private fun startXaiWithGuard() {
-        if (SettingsStore.xaiApiKey(this).isBlank()) {
-            showMissingKey(
-                title = "xAI Grok TTS",
-                message = t(
-                    "Введите xAI API key в Настройках.",
-                    "Wprowadź klucz API xAI w Ustawieniach.",
-                    "Enter the xAI API key in Settings."
-                )
-            )
+    private fun startPerCharWithGuard(engine: String) {
+        val name = CloudEngines.name(engine)
+        if (CloudEngines.apiKey(this, engine).isBlank()) {
+            showMissingKey(name, missingKeyText(name))
             return
         }
 
         val remaining = remainingText()
-        val cost = XaiTtsClient.estimatedCostEuro(remaining)
-        val threshold = SettingsStore.confirmEuro(this)
-        val hash = text.hashCode()
+        val cost = CloudEngines.costEuro(this, engine, remaining)
+        val hash = text.hashCode() * 31 + engine.hashCode()
 
-        if (xaiConfirmedHash == hash || cost < threshold) {
-            startXaiFrom(currentSegment)
+        if (xaiConfirmedHash == hash || cost < SettingsStore.confirmEuro(this)) {
+            startCloudFrom(currentSegment, engine)
             return
         }
 
+        val euro = String.format(Locale.US, "%.2f", cost)
         AlertDialog.Builder(this)
-            .setTitle(t("Платная озвучка xAI Grok", "Płatna synteza xAI Grok", "Paid xAI Grok narration"))
+            .setTitle(t("Платная озвучка $name", "Płatna synteza $name", "Paid $name narration"))
             .setMessage(
                 t(
-                    "Осталось ${remaining.length} символов. По текущему тарифу xAI ориентировочная стоимость ≈ €${String.format(Locale.US, "%.2f", cost)}. Продолжить?",
-                    "Pozostało ${remaining.length} znaków. Przy bieżącej stawce xAI szacowany koszt ≈ €${String.format(Locale.US, "%.2f", cost)}. Kontynuować?",
-                    "${remaining.length} characters remain. At the current xAI rate the estimated cost is ≈ €${String.format(Locale.US, "%.2f", cost)}. Continue?"
+                    "Осталось ${remaining.length} символов. Ориентировочная стоимость ≈ €$euro. Продолжить?",
+                    "Pozostało ${remaining.length} znaków. Szacowany koszt ≈ €$euro. Kontynuować?",
+                    "${remaining.length} characters remain. Estimated cost ≈ €$euro. Continue?"
                 )
             )
             .setNegativeButton(t("Нет", "Nie", "No"), null)
             .setPositiveButton(t("Озвучить", "Generuj", "Generate")) { _, _ ->
                 xaiConfirmedHash = hash
-                startXaiFrom(currentSegment)
+                startCloudFrom(currentSegment, engine)
             }
             .show()
     }
+
+    private fun missingKeyText(name: String): String =
+        t(
+            "Введите API key $name в Настройках.",
+            "Wprowadź klucz API $name w Ustawieniach.",
+            "Enter the $name API key in Settings."
+        )
 
     private fun remainingText(): String {
         val exact = playbackStartOffsetOverride?.coerceIn(0, text.length)
@@ -1091,10 +1094,6 @@ class ReaderActivity : Activity() {
     private fun startOpenAiFrom(index: Int) {
         openAiRunAudioMillis = 0L
         startCloudFrom(index, SettingsStore.ENGINE_OPENAI)
-    }
-
-    private fun startXaiFrom(index: Int) {
-        startCloudFrom(index, SettingsStore.ENGINE_XAI)
     }
 
     private fun startEdgeFrom(index: Int) {
@@ -1153,18 +1152,7 @@ class ReaderActivity : Activity() {
         syncPlaybackNotification()
 
         resultText.text =
-            when (engine) {
-                SettingsStore.ENGINE_EDGE ->
-                    t("Microsoft Edge: буферизация…", "Microsoft Edge: buforowanie…", "Microsoft Edge: buffering…")
-                SettingsStore.ENGINE_AZURE ->
-                    t("Azure Speech: буферизация…", "Azure Speech: buforowanie…", "Azure Speech: buffering…")
-                SettingsStore.ENGINE_GOOGLE ->
-                    t("Google Gemini: буферизация…", "Google Gemini: buforowanie…", "Google Gemini: buffering…")
-                SettingsStore.ENGINE_XAI ->
-                    t("xAI Grok: буферизация…", "xAI Grok: buforowanie…", "xAI Grok: buffering…")
-                else ->
-                    t("OpenAI: буферизация…", "OpenAI: buforowanie…", "OpenAI: buffering…")
-            }
+            CloudEngines.name(engine) + ": " + t("буферизация…", "buforowanie…", "buffering…")
 
         playCloudChunk(
             startIndex = index.coerceIn(0, segments.lastIndex),
@@ -1409,14 +1397,7 @@ class ReaderActivity : Activity() {
 
             listenButton.text = "Читается"
             resultText.text =
-                when (engine) {
-                    SettingsStore.ENGINE_OPENAI -> "OpenAI • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    SettingsStore.ENGINE_EDGE -> "Microsoft Edge • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    SettingsStore.ENGINE_AZURE -> "Azure Speech • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    SettingsStore.ENGINE_GOOGLE -> "Google Gemini • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    SettingsStore.ENGINE_XAI -> "xAI Grok • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
-                    else -> "TTS"
-                }
+                "${CloudEngines.name(engine)} • ${chunk.startSegment + 1}–${chunk.endSegment + 1}/${segments.size}"
 
             val nextStart = chunk.endSegment + 1
             CloudPlaybackPolicy
@@ -1437,6 +1418,7 @@ class ReaderActivity : Activity() {
             mediaPlayer?.release()
             mediaPlayer = null
             this@ReaderActivity.isPlaying = false
+            stopPlaybackBusyIndicators()
             playPause.text = "Продолжить"
             listenButton.text = "Слушать"
             resultText.text = t("Ошибка воспроизведения.", "Błąd odtwarzania.", "Playback error.")
@@ -1535,24 +1517,15 @@ class ReaderActivity : Activity() {
                     "Czytanie zakończone • OpenAI ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}",
                     "Reading complete • OpenAI ≈ €${String.format(Locale.US, "%.3f", estimatedOpenAiRunCost())}"
                 )
-            SettingsStore.ENGINE_XAI ->
-                t(
-                    "Чтение завершено • xAI Grok TTS",
-                    "Czytanie zakończone • xAI Grok TTS",
-                    "Reading complete • xAI Grok TTS"
-                )
             SettingsStore.ENGINE_EDGE ->
                 t(
                     "Чтение завершено • Microsoft Edge: бесплатно",
                     "Czytanie zakończone • Microsoft Edge: bezpłatnie",
                     "Reading complete • Microsoft Edge: free"
                 )
-            SettingsStore.ENGINE_AZURE ->
-                t("Чтение завершено • Azure Speech", "Czytanie zakończone • Azure Speech", "Reading complete • Azure Speech")
-            SettingsStore.ENGINE_GOOGLE ->
-                t("Чтение завершено • Google Gemini TTS", "Czytanie zakończone • Google Gemini TTS", "Reading complete • Google Gemini TTS")
             else ->
-                t("Чтение завершено.", "Czytanie zakończone.", "Reading complete.")
+                t("Чтение завершено", "Czytanie zakończone", "Reading complete") +
+                    " • " + CloudEngines.name(engine)
         }
 
     private fun clearCloudPrefetch() {
@@ -1846,11 +1819,8 @@ class ReaderActivity : Activity() {
             } else {
                 when {
                     engine == SettingsStore.ENGINE_OPENAI -> startOpenAiFrom(currentSegment)
-                    engine == SettingsStore.ENGINE_XAI -> startXaiFrom(currentSegment)
-                    engine == SettingsStore.ENGINE_EDGE -> startEdgeFrom(currentSegment)
-                    engine == SettingsStore.ENGINE_AZURE -> startAzureFrom(currentSegment)
-                    engine == SettingsStore.ENGINE_GOOGLE -> startGoogleFrom(currentSegment)
                     engine.startsWith("android:") -> startAndroidTts()
+                    else -> startCloudFrom(currentSegment, engine)
                 }
             }
         }
@@ -1860,11 +1830,7 @@ class ReaderActivity : Activity() {
         val engine = SettingsStore.engine(this)
         val engineLabel =
             when {
-                engine == SettingsStore.ENGINE_OPENAI -> "OpenAI"
-                engine == SettingsStore.ENGINE_XAI -> "Grok"
-                engine == SettingsStore.ENGINE_EDGE -> "Edge"
-                engine == SettingsStore.ENGINE_AZURE -> "Azure"
-                engine == SettingsStore.ENGINE_GOOGLE -> "Gemini"
+                engine.startsWith("cloud:") -> CloudEngines.shortName(engine) ?: "TTS"
                 engine == SettingsStore.DEFAULT_ENGINE -> "Android"
                 engine == SettingsStore.ENGINE_ANDROID_SYSTEM -> "System"
                 engine == SettingsStore.ENGINE_RHVOICE -> "RHVoice"
@@ -1886,7 +1852,7 @@ class ReaderActivity : Activity() {
         }
 
         val voice = SettingsStore.voice(this)
-        val voices = VoiceCatalog.staticVoices(engine)
+        val voices = VoiceCatalog.voices(this, engine)
         val voiceLabel =
             voices.firstOrNull { it.id == voice }?.label
                 ?: voice.ifBlank { t("Голос", "Głos", "Voice") }
@@ -2197,32 +2163,28 @@ class ReaderActivity : Activity() {
                     .show()
             }
 
-            SettingsStore.ENGINE_XAI -> {
-                if (SettingsStore.xaiApiKey(this).isBlank()) {
-                    showMissingKey(
-                        title = "xAI Grok TTS",
-                        message = t(
-                            "Введите xAI API key в Настройках.",
-                            "Wprowadź klucz API xAI w Ustawieniach.",
-                            "Enter the xAI API key in Settings."
-                        )
-                    )
+            SettingsStore.ENGINE_XAI,
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD -> {
+                val name = CloudEngines.name(engine)
+                if (CloudEngines.apiKey(this, engine).isBlank()) {
+                    showMissingKey(name, missingKeyText(name))
                     return
                 }
 
-                val cost = XaiTtsClient.estimatedCostEuro(text)
+                val euro = String.format(Locale.US, "%.2f", CloudEngines.costEuro(this, engine, text))
                 AlertDialog.Builder(this)
-                    .setTitle(t("Создать MP3 через xAI Grok?", "Utworzyć MP3 przez xAI Grok?", "Create MP3 with xAI Grok?"))
+                    .setTitle(t("Создать MP3 через $name?", "Utworzyć MP3 przez $name?", "Create MP3 with $name?"))
                     .setMessage(
                         t(
-                            "Отдельная генерация всего текста: ${text.length} символов, ориентировочно €${String.format(Locale.US, "%.2f", cost)}.",
-                            "Osobne generowanie całego tekstu: ${text.length} znaków, szacunkowo €${String.format(Locale.US, "%.2f", cost)}.",
-                            "Separate generation of the full text: ${text.length} characters, estimated €${String.format(Locale.US, "%.2f", cost)}."
+                            "Отдельная генерация всего текста: ${text.length} символов, ориентировочно €$euro.",
+                            "Osobne generowanie całego tekstu: ${text.length} znaków, szacunkowo €$euro.",
+                            "Separate generation of the full text: ${text.length} characters, estimated €$euro."
                         )
                     )
                     .setNegativeButton(t("Нет", "Nie", "No"), null)
                     .setPositiveButton(t("Создать", "Utwórz", "Create")) { _, _ ->
-                        pendingExportEngine = SettingsStore.ENGINE_XAI
+                        pendingExportEngine = engine
                         chooseAudioDestination()
                     }
                     .show()
@@ -2401,14 +2363,13 @@ class ReaderActivity : Activity() {
                                     "Szacowany koszt tej generacji ≈ €${String.format(Locale.US, "%.2f", OpenAiTtsClient.estimatedCostEuro(text))}",
                                     "Estimated cost of this generation ≈ €${String.format(Locale.US, "%.2f", OpenAiTtsClient.estimatedCostEuro(text))}"
                                 )
-                            SettingsStore.ENGINE_XAI ->
-                                t(
-                                    "xAI Grok: ориентировочная стоимость ≈ €${String.format(Locale.US, "%.2f", XaiTtsClient.estimatedCostEuro(text))}",
-                                    "xAI Grok: szacowany koszt ≈ €${String.format(Locale.US, "%.2f", XaiTtsClient.estimatedCostEuro(text))}",
-                                    "xAI Grok: estimated cost ≈ €${String.format(Locale.US, "%.2f", XaiTtsClient.estimatedCostEuro(text))}"
-                                )
                             SettingsStore.ENGINE_EDGE ->
                                 t("Microsoft Edge: бесплатно", "Microsoft Edge: bezpłatnie", "Microsoft Edge: free")
+                            SettingsStore.ENGINE_XAI,
+                            SettingsStore.ENGINE_ELEVEN,
+                            SettingsStore.ENGINE_INWORLD ->
+                                CloudEngines.name(engine) + ": ≈ €" +
+                                    String.format(Locale.US, "%.2f", CloudEngines.costEuro(this, engine, text))
                             else ->
                                 t("Azure Speech: F0 бесплатно в пределах квоты", "Azure Speech: F0 bezpłatnie w ramach limitu", "Azure Speech: F0 free within quota")
                         }

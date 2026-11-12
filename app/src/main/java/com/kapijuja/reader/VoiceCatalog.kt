@@ -39,6 +39,14 @@ object VoiceCatalog {
         VoiceChoice(
             "ru-RU-Lev:MAI-Voice-2",
             "Lev HD — мужской, не входит в F0"
+        ),
+        VoiceChoice(
+            "uk-UA-OstapNeural",
+            "Ostap Neural — український, чоловічий"
+        ),
+        VoiceChoice(
+            "uk-UA-PolinaNeural",
+            "Polina Neural — українська, жіночий"
         )
     )
 
@@ -109,7 +117,9 @@ object VoiceCatalog {
     val edge = listOf(
         VoiceChoice("ru-RU-DmitryNeural", "Dmitry Neural — мужской"),
         VoiceChoice("ru-RU-SvetlanaNeural", "Svetlana Neural"),
-        VoiceChoice("ru-RU-DariyaNeural", "Dariya Neural")
+        VoiceChoice("ru-RU-DariyaNeural", "Dariya Neural"),
+        VoiceChoice("uk-UA-OstapNeural", "Ostap Neural — український, чоловічий"),
+        VoiceChoice("uk-UA-PolinaNeural", "Polina Neural — українська, жіночий")
     )
 
     fun staticVoices(engine: String): List<VoiceChoice> = when (engine) {
@@ -118,8 +128,14 @@ object VoiceCatalog {
         SettingsStore.ENGINE_AZURE -> azure
         SettingsStore.ENGINE_GOOGLE -> google
         SettingsStore.ENGINE_XAI -> xai
+        SettingsStore.ENGINE_ELEVEN -> ElevenLabsTtsClient.fallbackVoices
+        SettingsStore.ENGINE_INWORLD -> InworldTtsClient.fallbackVoices
         else -> emptyList()
     }
+
+    /** Voices to offer in menus: the downloaded account list when available. */
+    fun voices(context: android.content.Context, engine: String): List<VoiceChoice> =
+        CloudEngines.cachedVoices(context, engine).ifEmpty { staticVoices(engine) }
 
     fun defaultVoice(engine: String): String = when (engine) {
         SettingsStore.DEFAULT_ENGINE -> SettingsStore.DEFAULT_GOOGLE_ANDROID_VOICE
@@ -128,6 +144,8 @@ object VoiceCatalog {
         SettingsStore.ENGINE_AZURE -> "ru-RU-DmitryNeural"
         SettingsStore.ENGINE_GOOGLE -> "Gacrux"
         SettingsStore.ENGINE_XAI -> "orion"
+        SettingsStore.ENGINE_ELEVEN -> ElevenLabsTtsClient.DEFAULT_VOICE
+        SettingsStore.ENGINE_INWORLD -> InworldTtsClient.DEFAULT_VOICE
         else -> ""
     }
 }

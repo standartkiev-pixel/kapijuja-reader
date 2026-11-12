@@ -17,6 +17,10 @@ object CloudTtsDispatcher {
                 "Gacrux"
             SettingsStore.ENGINE_XAI ->
                 "orion"
+            SettingsStore.ENGINE_ELEVEN ->
+                ElevenLabsTtsClient.DEFAULT_VOICE
+            SettingsStore.ENGINE_INWORLD ->
+                InworldTtsClient.DEFAULT_VOICE
             else ->
                 "cedar"
         }
@@ -76,6 +80,29 @@ object CloudTtsDispatcher {
                     text = text,
                     voice = voice,
                     speed = speed,
+                    language = SettingsStore.speechLanguage(context),
+                    context = context
+                )
+
+            SettingsStore.ENGINE_ELEVEN ->
+                ElevenLabsTtsClient.synthesize(
+                    apiKey = SettingsStore.elevenApiKey(context),
+                    model = SettingsStore.elevenModel(context),
+                    text = text,
+                    voice = voice,
+                    speed = speed,
+                    language = SettingsStore.speechLanguage(context),
+                    context = context
+                )
+
+            SettingsStore.ENGINE_INWORLD ->
+                InworldTtsClient.synthesize(
+                    apiKey = SettingsStore.inworldApiKey(context),
+                    model = SettingsStore.inworldModel(context),
+                    text = text,
+                    voice = voice,
+                    speed = speed,
+                    language = SettingsStore.speechLanguage(context),
                     context = context
                 )
 
@@ -95,6 +122,11 @@ object CloudTtsDispatcher {
                 AzureTtsClient.splitForApi(text)
             SettingsStore.ENGINE_XAI ->
                 XaiTtsClient.splitForApi(text)
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD ->
+                // Small export parts keep each paid request short; the client
+                // splits further if a provider limit requires it.
+                OpenAiTtsClient.splitForApi(text, 1_800)
             else ->
                 OpenAiTtsClient.splitForApi(text)
         }
@@ -109,11 +141,16 @@ object CloudTtsDispatcher {
                 CloudAudioSpec("google", "wav")
             SettingsStore.ENGINE_XAI ->
                 CloudAudioSpec("xai", "mp3")
+            SettingsStore.ENGINE_ELEVEN ->
+                CloudAudioSpec("eleven", "mp3")
+            SettingsStore.ENGINE_INWORLD ->
+                CloudAudioSpec("inworld", "mp3")
             else ->
                 CloudAudioSpec("openai", "mp3")
         }
 
+    /** Engines where every generated chunk costs money. */
     fun isPaidPrefetchSensitive(engine: String): Boolean =
         engine == SettingsStore.ENGINE_OPENAI ||
-            engine == SettingsStore.ENGINE_XAI
+            CloudEngines.isPerCharacter(engine)
 }

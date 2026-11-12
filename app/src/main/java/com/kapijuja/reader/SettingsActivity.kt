@@ -28,6 +28,7 @@ class SettingsActivity : Activity() {
     private lateinit var googleKeyInput: EditText
     private lateinit var googleInstructionInput: EditText
     private lateinit var xaiKeyInput: EditText
+    private var persistNewProviders: () -> Unit = {}
     private lateinit var serviceText: TextView
     private lateinit var languageButton: Button
     private lateinit var libraryLimitButton: Button
@@ -174,6 +175,7 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.input(this, keyInput)
         root.addView(keyInput, inputParams())
+        ProviderSettingsSections.addLinks(this, root, SettingsStore.ENGINE_OPENAI)
 
         instructionInput = EditText(this).apply {
             hint = t("Инструкция голосу", "Voice instructions")
@@ -241,6 +243,7 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.secondary(azureRegionNote)
         root.addView(azureRegionNote)
+        ProviderSettingsSections.addLinks(this, root, SettingsStore.ENGINE_AZURE)
 
         root.addView(sectionTitle("Google Gemini 2.5 Flash TTS"))
 
@@ -270,6 +273,7 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.input(this, googleKeyInput)
         root.addView(googleKeyInput, inputParams())
+        ProviderSettingsSections.addLinks(this, root, SettingsStore.ENGINE_GOOGLE)
 
         googleInstructionInput = EditText(this).apply {
             hint = t("Инструкция голосу Google", "Google voice instructions")
@@ -309,6 +313,9 @@ class SettingsActivity : Activity() {
         }
         KapijujaUiTheme.input(this, xaiKeyInput)
         root.addView(xaiKeyInput, inputParams())
+        ProviderSettingsSections.addLinks(this, root, SettingsStore.ENGINE_XAI)
+        persistNewProviders =
+            ProviderSettingsSections.addNewProviders(this, root) { testProviderConnection(it) }
 
         root.addView(sectionTitle(t("Защита от расходов", "Cost protection")))
         val costNote = TextView(this).apply {
@@ -421,6 +428,7 @@ class SettingsActivity : Activity() {
         if (::xaiKeyInput.isInitialized) {
             SettingsStore.setXaiApiKey(this, xaiKeyInput.text.toString())
         }
+        persistNewProviders()
         val limit = costInput.text.toString().replace(',', '.').toDoubleOrNull()
             ?: SettingsStore.confirmEuro(this)
         SettingsStore.setConfirmEuro(this, limit)
@@ -612,6 +620,8 @@ class SettingsActivity : Activity() {
             "Google Gemini 2.5 Flash TTS"
         dynamic += SettingsStore.ENGINE_XAI to
             "xAI Grok TTS"
+        dynamic += SettingsStore.ENGINE_ELEVEN to "ElevenLabs"
+        dynamic += SettingsStore.ENGINE_INWORLD to "Inworld TTS"
 
         AlertDialog.Builder(this)
             .setTitle(t("Выберите движок", "Choose engine"))
@@ -713,7 +723,7 @@ class SettingsActivity : Activity() {
             return
         }
 
-        val voices = VoiceCatalog.staticVoices(engine)
+        val voices = VoiceCatalog.voices(this, engine)
         if (voices.isEmpty()) {
             Toast.makeText(this, t("Для этого движка список голосов пока недоступен", "No voice list is available for this engine yet"), Toast.LENGTH_SHORT).show()
             return
@@ -737,24 +747,7 @@ class SettingsActivity : Activity() {
                 AppDiagnostics.error(this, "Android voice probe failed: engine=$engine status=$status")
                 return@OnInitListener
             }
-            val voices =
-                probeTts?.voices.orEmpty()
-                    .sortedWith(
-                        compareByDescending<android.speech.tts.Voice> {
-                            engine ==
-                                SettingsStore.ENGINE_RHVOICE &&
-                                it.name.contains(
-                                    "aleksandr",
-                                    ignoreCase = true
-                                )
-                        }
-                            .thenByDescending {
-                                it.locale?.language == "ru"
-                            }
-                            .thenBy {
-                                it.name
-                            }
-                    )
+            val voices = probeTts?.voices.orEmpty()
 
             if (voices.isEmpty()) {
                 if (engine == SettingsStore.ENGINE_RHVOICE) {
@@ -788,21 +781,17 @@ class SettingsActivity : Activity() {
                 }
                 return@OnInitListener
             }
-            AlertDialog.Builder(this)
-                .setTitle(t("Голос", "Voice"))
-                .setItems(voices.map {
-                    val locale = it.locale?.toLanguageTag().orEmpty()
-                    "${it.name}  $locale"
-                }.toTypedArray()) { _, which ->
-                    SettingsStore.setVoice(this, engine, voices[which].name)
-                    voiceButton.text = voices[which].name
-                    AppDiagnostics.info(
-                        this,
-                        "Android voice selected: engine=$engine voice=${voices[which].name} locale=${voices[which].locale}"
-                    )
+            AndroidVoicePicker.show(
+                activity = this,
+                voices = voices,
+                current = SettingsStore.voice(this, engine),
+                onPicked = { id, label ->
+                    SettingsStore.setVoice(this, engine, id)
+                    voiceButton.text = label
+                    AppDiagnostics.info(this, "Android voice selected: engine=$engine voice=$id")
                     refreshServiceText()
                 }
-                .show()
+            )
         }
         probeTts = if (pkg == null) TextToSpeech(this, listener) else TextToSpeech(this, listener, pkg)
     }
@@ -899,9 +888,9 @@ class SettingsActivity : Activity() {
 
                 engine == SettingsStore.ENGINE_XAI ->
                     t(
-                        "xAI Grok TTS подключён через официальный REST API. Русский поддерживается; голос по умолчанию Orion. Платный движок: приложение не предзагружает следующий фрагмент, чтобы не оплачивать непрослушанный текст.",
-                        "xAI Grok TTS korzysta z oficjalnego REST API. Język rosyjski jest obsługiwany; domyślny głos to Orion. To płatny silnik: aplikacja nie generuje następnego fragmentu z wyprzedzeniem, aby nie płacić za niesłuchany tekst.",
-                        "xAI Grok TTS uses the official REST API. Russian is supported; Orion is the default voice. It is a paid engine, so the app does not pre-generate the next chunk and charge for unheard text."
+                        "xAI Grok TTS подключён через официальный REST API. Русский поддерживается; голос по умолчанию Orion. Платный движок: заранее готовится только один следующий фрагмент, чтобы чтение шло без пауз.",
+                        "xAI Grok TTS korzysta z oficjalnego REST API. Język rosyjski jest obsługiwany; domyślny głos to Orion. To płatny silnik: z wyprzedzeniem przygotowywany jest tylko jeden następny fragment, aby czytanie było płynne.",
+                        "xAI Grok TTS uses the official REST API. Russian is supported; Orion is the default voice. It is a paid engine: only one next chunk is prepared ahead so reading has no gaps."
                     )
 
                 engine == SettingsStore.ENGINE_RHVOICE ->
@@ -918,7 +907,7 @@ class SettingsActivity : Activity() {
                         "Android engines and voices are read from the device. The selected voice is reloaded whenever you return from settings."
                     )
 
-                else -> ""
+                else -> ProviderSettingsSections.status(this, engine)
             }
     }
 
@@ -926,8 +915,8 @@ class SettingsActivity : Activity() {
         val engine = SettingsStore.engine(this)
         val id = SettingsStore.voice(this, engine)
         if (id.isBlank()) return t("Выбрать голос", "Choose voice")
-        val voices = VoiceCatalog.staticVoices(engine)
-        return voices.firstOrNull { it.id == id }?.label ?: id
+        if (engine.startsWith("android:")) return AndroidVoicePicker.labelForId(this, id)
+        return VoiceCatalog.voices(this, engine).firstOrNull { it.id == id }?.label ?: id
     }
 
     private fun engineLabel(id: String): String = when {
@@ -942,6 +931,7 @@ class SettingsActivity : Activity() {
             t("RHVoice — бесплатно, офлайн", "RHVoice — bezpłatny, offline", "RHVoice — free, offline")
         id.startsWith("android:") ->
             "Android: ${id.removePrefix("android:")}"
+        id.startsWith("cloud:") -> CloudEngines.name(id)
         else -> id
     }
 

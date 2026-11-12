@@ -7,6 +7,9 @@ import android.widget.PopupMenu
 import android.widget.Toast
 
 object ReaderPopupMenus {
+    // Guards against a download loop when the provider returns no voices.
+    private var accountVoicesRequested = false
+
     private data class EngineChoice(
         val id: String,
         val label: String
@@ -43,6 +46,8 @@ object ReaderPopupMenus {
             add(EngineChoice(SettingsStore.ENGINE_OPENAI, "OpenAI"))
             add(EngineChoice(SettingsStore.ENGINE_GOOGLE, "Google Gemini"))
             add(EngineChoice(SettingsStore.ENGINE_XAI, "xAI Grok"))
+            add(EngineChoice(SettingsStore.ENGINE_ELEVEN, "ElevenLabs"))
+            add(EngineChoice(SettingsStore.ENGINE_INWORLD, "Inworld"))
         }
 
         val current = SettingsStore.engine(activity)
@@ -82,7 +87,35 @@ object ReaderPopupMenus {
             return
         }
 
-        val voices = VoiceCatalog.staticVoices(engine)
+        // ElevenLabs/Inworld voices belong to the user's account: download the
+        // list once, then reopen this menu with the real voices.
+        if (
+            CloudEngines.hasAccountVoices(engine) &&
+            CloudEngines.cachedVoices(activity, engine).isEmpty() &&
+            CloudEngines.apiKey(activity, engine).isNotBlank() &&
+            !accountVoicesRequested
+        ) {
+            accountVoicesRequested = true
+            Toast.makeText(
+                activity,
+                t(activity, "Загружаю список голосов…", "Pobieram listę głosów…", "Loading voices…"),
+                Toast.LENGTH_SHORT
+            ).show()
+            Thread {
+                runCatching { CloudEngines.refreshVoices(activity, engine) }
+                    .onFailure { AppDiagnostics.error(activity, "Voice list download failed: engine=$engine", it) }
+                activity.runOnUiThread {
+                    if (!activity.isFinishing) {
+                        onChanged()
+                        showVoice(activity, anchor, onChanged)
+                    }
+                }
+            }.start()
+            return
+        }
+        accountVoicesRequested = false
+
+        val voices = VoiceCatalog.voices(activity, engine)
         if (voices.isEmpty()) {
             Toast.makeText(
                 activity,
@@ -145,18 +178,7 @@ object ReaderPopupMenus {
                 return@OnInitListener
             }
 
-            val voices =
-                probe?.voices.orEmpty()
-                    .sortedWith(
-                        compareByDescending<android.speech.tts.Voice> {
-                            it.locale?.language == "ru"
-                        }.thenByDescending {
-                            !it.isNetworkConnectionRequired
-                        }.thenBy {
-                            it.name.lowercase()
-                        }
-                    )
-
+            val voices = probe?.voices.orEmpty()
             if (voices.isEmpty()) {
                 Toast.makeText(
                     activity,
@@ -172,41 +194,16 @@ object ReaderPopupMenus {
                 return@OnInitListener
             }
 
-            val current = SettingsStore.voice(activity, engine)
-            val popup = PopupMenu(activity, anchor)
-            voices.forEachIndexed { index, voice ->
-                val locale =
-                    listOfNotNull(
-                        voice.locale?.language,
-                        voice.locale?.country?.takeIf { it.isNotBlank() }
-                    ).joinToString("-")
-                val label =
-                    if (locale.isBlank()) {
-                        voice.name
-                    } else {
-                        "$locale • ${voice.name}"
-                    }
-
-                popup.menu
-                    .add(0, index + 1, index, label)
-                    .apply {
-                        isCheckable = true
-                        isChecked = voice.name == current
-                    }
-            }
-            popup.menu.setGroupCheckable(0, true, true)
-            popup.setOnMenuItemClickListener { item ->
-                val voice = voices.getOrNull(item.itemId - 1)
-                    ?: return@setOnMenuItemClickListener false
-                SettingsStore.setVoice(activity, engine, voice.name)
-                onChanged()
-                probe?.shutdown()
-                true
-            }
-            popup.setOnDismissListener {
-                probe?.shutdown()
-            }
-            popup.show()
+            AndroidVoicePicker.show(
+                activity = activity,
+                voices = voices,
+                current = SettingsStore.voice(activity, engine),
+                onPicked = { id, _ ->
+                    SettingsStore.setVoice(activity, engine, id)
+                    onChanged()
+                },
+                onClosed = { probe?.shutdown() }
+            )
         }
 
         probe =
