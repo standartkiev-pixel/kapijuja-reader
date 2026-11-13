@@ -28,6 +28,7 @@ object XaiTtsClient {
         text: String,
         voice: String,
         speed: Float = 1.0f,
+        language: String = SettingsStore.SPEECH_LANGUAGE_RU,
         context: Context? = null
     ): ByteArray {
         require(apiKey.isNotBlank()) { "xAI API key не указан в настройках" }
@@ -48,6 +49,7 @@ object XaiTtsClient {
                 text = text,
                 voice = voice,
                 speed = speed,
+                language = language,
                 context = context
             )
         }
@@ -103,6 +105,7 @@ object XaiTtsClient {
         text: String,
         voice: String,
         speed: Float,
+        language: String,
         context: Context?
     ): ByteArray {
         val connection = URL(ENDPOINT).openConnection() as HttpURLConnection
@@ -118,7 +121,12 @@ object XaiTtsClient {
             val body = JSONObject()
                 .put("text", text)
                 .put("voice_id", voice)
-                .put("language", "ru")
+                // xAI lists Russian but not Ukrainian; for Ukrainian text let
+                // the model detect the language instead of forcing Russian.
+                .put(
+                    "language",
+                    if (language == SettingsStore.SPEECH_LANGUAGE_UK) "auto" else "ru"
+                )
                 .put("speed", speed.toDouble().coerceIn(0.7, 1.5))
                 .put("text_normalization", true)
                 .put(

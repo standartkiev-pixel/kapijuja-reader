@@ -3,24 +3,18 @@ package com.kapijuja.reader
 /**
  * Playback prefetch policy.
  *
- * Free/non-sensitive cloud engines may prefetch immediately.
- * xAI Grok is paid per generated text, so only one next chunk is prefetched
- * and only after the current chunk is already half played.
- * OpenAI remains no-prefetch because its existing cost guard treats it as
- * paid-sensitive and we do not change that policy here.
+ * Every cloud engine prepares exactly one next chunk as soon as the current
+ * chunk starts playing, so there is no audible network gap between chunks.
+ *
+ * For paid engines this means that stopping playback can leave one generated
+ * but unheard chunk (about 700 characters). That small, bounded overspend was
+ * accepted on purpose in exchange for gapless reading. Never more than one
+ * future chunk is generated.
  */
 object CloudPlaybackPolicy {
     fun prefetchDelayMs(
-        engine: String,
+        @Suppress("UNUSED_PARAMETER") engine: String,
         durationMs: Long
     ): Long? =
-        when {
-            durationMs <= 0L -> null
-            engine == SettingsStore.ENGINE_XAI ->
-                (durationMs / 2L).coerceAtLeast(600L)
-            !CloudTtsDispatcher.isPaidPrefetchSensitive(engine) ->
-                0L
-            else ->
-                null
-        }
+        if (durationMs <= 0L) null else 0L
 }

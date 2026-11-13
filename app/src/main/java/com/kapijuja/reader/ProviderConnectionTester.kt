@@ -100,6 +100,20 @@ object ProviderConnectionTester {
                     null
                 }
 
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD ->
+                if (CloudEngines.apiKey(activity, engine).isBlank()) {
+                    val name = providerName(engine)
+                    t(
+                        activity,
+                        "Введите API key $name",
+                        "Wprowadź klucz API $name",
+                        "Enter the $name API key"
+                    )
+                } else {
+                    null
+                }
+
             else -> "Unsupported provider: $engine"
         }
 
@@ -116,6 +130,11 @@ object ProviderConnectionTester {
                 t(activity, "Проверка Google Gemini TTS…", "Sprawdzanie Google Gemini TTS…", "Checking Google Gemini TTS…")
             SettingsStore.ENGINE_XAI ->
                 t(activity, "Проверка xAI Grok TTS…", "Sprawdzanie xAI Grok TTS…", "Checking xAI Grok TTS…")
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD ->
+                providerName(engine).let {
+                    t(activity, "Проверка $it…", "Sprawdzanie $it…", "Checking $it…")
+                }
             else -> providerName(engine)
         }
 
@@ -145,6 +164,19 @@ object ProviderConnectionTester {
                     apiKey = SettingsStore.xaiApiKey(activity),
                     context = activity
                 )
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD -> {
+                // Listing voices proves the key works and costs nothing; the
+                // downloaded list also fills the voice menu.
+                val count = CloudEngines.refreshVoices(activity, engine).size
+                val name = providerName(engine)
+                t(
+                    activity,
+                    "$name доступен. API key работает; голосов загружено: $count.",
+                    "$name jest dostępny. Klucz API działa; pobrano głosów: $count.",
+                    "$name is available. The API key works; voices loaded: $count."
+                )
+            }
             else -> error("Unsupported provider: $engine")
         }
 
@@ -154,6 +186,8 @@ object ProviderConnectionTester {
             SettingsStore.ENGINE_AZURE -> "Azure Speech"
             SettingsStore.ENGINE_GOOGLE -> "Google Gemini TTS"
             SettingsStore.ENGINE_XAI -> "xAI Grok TTS"
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD -> CloudEngines.name(engine)
             else -> engine
         }
 

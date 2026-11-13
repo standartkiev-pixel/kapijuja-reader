@@ -15,6 +15,11 @@ object SettingsStore {
     private const val KEY_GOOGLE_API_KEY = "google_api_key"
     private const val KEY_GOOGLE_INSTRUCTIONS = "google_instructions"
     private const val KEY_XAI_API_KEY = "xai_api_key"
+    private const val KEY_ELEVEN_API_KEY = "eleven_api_key"
+    private const val KEY_ELEVEN_MODEL = "eleven_model"
+    private const val KEY_INWORLD_API_KEY = "inworld_api_key"
+    private const val KEY_INWORLD_MODEL = "inworld_model"
+    private const val KEY_SPEECH_LANGUAGE = "speech_language"
     private const val KEY_UI_LANGUAGE = "ui_language"
     private const val KEY_LIBRARY_LIMIT = "library_limit"
 
@@ -26,6 +31,12 @@ object SettingsStore {
     const val ENGINE_AZURE = "cloud:azure"
     const val ENGINE_GOOGLE = "cloud:google"
     const val ENGINE_XAI = "cloud:xai"
+    const val ENGINE_ELEVEN = "cloud:elevenlabs"
+    const val ENGINE_INWORLD = "cloud:inworld"
+
+    const val SPEECH_LANGUAGE_AUTO = "auto"
+    const val SPEECH_LANGUAGE_RU = "ru"
+    const val SPEECH_LANGUAGE_UK = "uk"
 
     const val DEFAULT_AZURE_REGION = "switzerlandnorth"
 
@@ -245,6 +256,61 @@ object SettingsStore {
 
     fun setXaiApiKey(context: Context, value: String) {
         prefs(context).edit().putString(KEY_XAI_API_KEY, value.trim()).apply()
+    }
+
+    fun elevenApiKey(context: Context): String =
+        prefs(context).getString(KEY_ELEVEN_API_KEY, "") ?: ""
+
+    fun setElevenApiKey(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_ELEVEN_API_KEY, value.trim()).apply()
+    }
+
+    fun elevenModel(context: Context): String =
+        prefs(context).getString(KEY_ELEVEN_MODEL, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: ElevenLabsTtsClient.DEFAULT_MODEL
+
+    fun setElevenModel(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_ELEVEN_MODEL, value.trim()).apply()
+    }
+
+    fun inworldApiKey(context: Context): String =
+        prefs(context).getString(KEY_INWORLD_API_KEY, "") ?: ""
+
+    fun setInworldApiKey(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_INWORLD_API_KEY, value.trim()).apply()
+    }
+
+    fun inworldModel(context: Context): String =
+        prefs(context).getString(KEY_INWORLD_MODEL, null)
+            ?.takeIf { it.isNotBlank() }
+            ?: InworldTtsClient.DEFAULT_MODEL
+
+    fun setInworldModel(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_INWORLD_MODEL, value.trim()).apply()
+    }
+
+    /** Language of the text being read: auto / ru / uk. */
+    fun speechLanguage(context: Context): String =
+        prefs(context).getString(KEY_SPEECH_LANGUAGE, SPEECH_LANGUAGE_AUTO)
+            ?: SPEECH_LANGUAGE_AUTO
+
+    fun setSpeechLanguage(context: Context, value: String) {
+        val normalized =
+            if (value == SPEECH_LANGUAGE_RU || value == SPEECH_LANGUAGE_UK) {
+                value
+            } else {
+                SPEECH_LANGUAGE_AUTO
+            }
+        prefs(context).edit().putString(KEY_SPEECH_LANGUAGE, normalized).apply()
+    }
+
+    /** Voice list downloaded from a provider account, stored as JSON. */
+    fun cachedVoices(context: Context, engine: String): String =
+        prefs(context).getString("voices_" + voiceKey(engine), "") ?: ""
+
+    fun setCachedVoices(context: Context, engine: String, json: String) {
+        prefs(context).edit().putString("voices_" + voiceKey(engine), json).apply()
     }
 
     fun uiLanguage(context: Context): String =

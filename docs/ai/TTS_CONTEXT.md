@@ -15,6 +15,8 @@ The project currently has these TTS routes:
 - OpenAI TTS — `OpenAiTtsClient.kt`.
 - Google Gemini TTS — `GoogleGeminiTtsClient.kt`.
 - xAI Grok TTS — `XaiTtsClient.kt`.
+- ElevenLabs — `ElevenLabsTtsClient.kt`.
+- Inworld TTS — `InworldTtsClient.kt`.
 
 ## Files to open first
 
@@ -52,9 +54,16 @@ Settings should store user configuration, not synthesize audio.
 ## Current important behavior
 
 - OpenAI has a user-confirmation/cost path before potentially expensive generation.
-- xAI Grok TTS has the same paid-use protection philosophy: exact character-based estimate before larger generation, and no speculative prefetch of the next playback chunk so pausing does not pay for unheard text.
-- xAI uses the official REST `POST /v1/tts`, Russian `ru`, MP3 output and the current 60,000-character unary request limit. Export splitting is owned by `XaiTtsClient.kt`.
+- xAI Grok, ElevenLabs and Inworld are billed per character and share one generic cost guard in `ReaderActivity.startPerCharWithGuard(engine)`; names, keys, prices and links come from `CloudEngines.kt`.
+- Gapless playback: `CloudPlaybackPolicy` lets every cloud engine prepare exactly one next chunk as soon as the current chunk starts playing. Stopping can leave one generated but unheard chunk (about 700 characters); the user accepted this on 2026-11-12 in exchange for no pauses. Never generate more than one chunk ahead.
+- xAI uses the official REST `POST /v1/tts`, MP3 output and the current 60,000-character unary request limit. Export splitting is owned by `XaiTtsClient.kt`. xAI lists Russian but not Ukrainian: language is `ru`, or `auto` when the reading language is Ukrainian.
 - xAI default Reader voice is `orion`; static voice choices are in `VoiceCatalog.kt`. The connection test uses `GET /v1/tts/voices`.
+- ElevenLabs: `POST /v1/text-to-speech/{voice_id}`, header `xi-api-key`, MP3. Model is user-selectable (default `eleven_v3`). Voices are per account: `GET /v2/voices`, cached in settings via `CloudEngines.refreshVoices`.
+- Inworld: `POST https://api.inworld.ai/tts/v1/voice`, `Authorization: Basic <key from Portal>`, JSON response with base64 `audioContent`, 2,000-character request limit (the client splits longer text and joins the MP3 parts). Voices: `GET /tts/v1/voices`.
+- Shared HTTP/retry code for the two new providers is in `CloudHttp.kt` (DNS/connect retried, read timeout never retried to avoid double billing).
+- Reading language (`SettingsStore.speechLanguage`: auto/ru/uk) is passed to ElevenLabs, Inworld and Grok. Gemini still sends `ru-RU`; Edge/Azure language follows the chosen voice (uk-UA Ostap/Polina were added).
+- Settings: `ProviderSettingsSections.kt` owns the "get key / billing" link buttons for all providers, the reading-language choice and the ElevenLabs/Inworld sections.
+- Android TTS voice menus use `AndroidVoicePicker.kt` + pure `AndroidVoiceLabels.kt` (language, gender for known Google speaker codes, online/offline, not downloaded; ru/uk first, other languages behind one item).
 - Grok editor markup uses explicit Unicode stress marks plus the provider's documented wrapping/inline speech tags. The UI does not use a pronunciation dictionary.
 - Grok wrapping tags are kept balanced across playback/export chunks; when playback starts inside a styled span, the Reader moves the effective start back to include the opening tag.
 - Edge is treated as a no-direct-user-charge route but depends on Microsoft's service behavior.
@@ -89,16 +98,11 @@ Prefer this shape:
 
 Do not copy a whole existing provider implementation into `ReaderActivity.kt`.
 
-## Grok playback chunking and pauses
+## Playback chunking and pauses
 
-Reader playback deliberately keeps Grok requests small instead of generating the full remaining document in one paid request. The normal playback chunk target is about 720 characters.
+Reader playback keeps cloud requests small (normal chunk target about 720 characters) instead of generating the whole remaining document in one paid request.
 
-To reduce audible network gaps without generating the whole book ahead:
-- the current Grok chunk starts playing first;
-- only after about half of its audio duration is played, the next single chunk is prefetched;
+- the current chunk starts playing first;
+- the next single chunk is requested immediately after playback of the current one starts;
 - at most one future chunk is generated ahead;
-- stopping before the halfway point prevents the next request from being sent;
 - if a prefetched request is still running when playback reaches the boundary, Reader waits for that request instead of sending a duplicate paid request.
-
-This preserves the cost-control goal while hiding most request latency between chunks.
-

@@ -6,45 +6,28 @@ import org.junit.Test
 
 class CloudPlaybackPolicyTest {
     @Test
-    fun grokPrefetchesOnlyAfterHalfCurrentAudio() {
-        assertEquals(
-            5_000L,
-            CloudPlaybackPolicy.prefetchDelayMs(
-                SettingsStore.ENGINE_XAI,
-                10_000L
+    fun everyCloudEnginePrefetchesNextChunkImmediately() {
+        listOf(
+            SettingsStore.ENGINE_EDGE,
+            SettingsStore.ENGINE_AZURE,
+            SettingsStore.ENGINE_GOOGLE,
+            SettingsStore.ENGINE_OPENAI,
+            SettingsStore.ENGINE_XAI,
+            SettingsStore.ENGINE_ELEVEN,
+            SettingsStore.ENGINE_INWORLD
+        ).forEach { engine ->
+            assertEquals(
+                engine,
+                0L,
+                CloudPlaybackPolicy.prefetchDelayMs(engine, 10_000L)
             )
-        )
+        }
     }
 
     @Test
-    fun grokShortAudioStillWaitsBeforePrefetch() {
-        assertEquals(
-            600L,
-            CloudPlaybackPolicy.prefetchDelayMs(
-                SettingsStore.ENGINE_XAI,
-                800L
-            )
-        )
-    }
-
-    @Test
-    fun freeCloudEngineMayPrefetchImmediately() {
-        assertEquals(
-            0L,
-            CloudPlaybackPolicy.prefetchDelayMs(
-                SettingsStore.ENGINE_EDGE,
-                10_000L
-            )
-        )
-    }
-
-    @Test
-    fun openAiKeepsNoPrefetchPolicy() {
+    fun unknownDurationDoesNotPrefetch() {
         assertNull(
-            CloudPlaybackPolicy.prefetchDelayMs(
-                SettingsStore.ENGINE_OPENAI,
-                10_000L
-            )
+            CloudPlaybackPolicy.prefetchDelayMs(SettingsStore.ENGINE_XAI, 0L)
         )
     }
 }

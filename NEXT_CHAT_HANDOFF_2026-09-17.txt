@@ -1,8 +1,8 @@
-KAPIJUJA READER — CURRENT HANDOFF — updated 2026-09-19
+KAPIJUJA READER — CURRENT HANDOFF — updated 2026-11-12
 
 Repository: standartkiev-pixel/kapijuja-reader
 Default branch: main
-Current test target: 0.1.14 / versionCode 15
+Current test target: 0.1.15 / versionCode 16
 
 START HERE
 1. AI_CONTEXT_INDEX.md
@@ -15,7 +15,9 @@ Do not preload PROJECT_HANDOFF.md. It is historical/search-only material.
 
 CURRENT PRODUCT STATE
 
-TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini and xAI Grok.
+TTS engines include Android/RHVoice, Edge, Azure, OpenAI, Google Gemini, xAI Grok, ElevenLabs and Inworld.
+
+2026-11-12: ElevenLabs and Inworld were added (own client files, shared CloudHttp.kt, provider facts in CloudEngines.kt). Settings show "get key / billing" link buttons for every provider and a reading-language choice (auto/ru/uk) via ProviderSettingsSections.kt. Android voice menus show readable labels (AndroidVoicePicker.kt). The two new providers were written from the public API docs and have not been tested on a device with real keys yet.
 
 Silero v5.5 and the PyTorch Android runtime were removed from the base app on 2026-09-19. The local Silero path was broken on-device by a TorchScript argument-type mismatch and made the APK very large. The build no longer downloads the Silero model asset and no longer depends on org.pytorch:pytorch_android. Do not re-add a large local runtime/model to the default APK without a separate optional-download or flavor design.
 
@@ -48,11 +50,11 @@ The old dedicated stress button in the top editor toolbar is now a compact dropd
 
 The separate Grok ▾ menu now contains delivery/speed/pitch plus breath/sound actions; short and long pause are not duplicated there.
 
-GROK PLAYBACK GAPS / COST CONTROL
+PLAYBACK GAPS / COST CONTROL
 
-Grok playback remains split into small chunks (normal target about 720 characters) so stopping playback does not cause the whole remaining document to be generated and billed.
+Cloud playback is split into small chunks (normal target about 720 characters) so stopping does not generate and bill the whole remaining document.
 
-The previous audible gaps were caused by xAI being treated as paid-prefetch-sensitive: the next request started only after the current audio ended. Now the Reader starts one next Grok request only after about 50% of the current audio has played. At most one future chunk is generated. If the user stops before halfway, the next request is not sent. If the prefetch is still running at the boundary, Reader waits for it and does not send a duplicate paid request.
+Since 2026-11-12 every cloud engine (including OpenAI, Grok, ElevenLabs, Inworld) requests exactly one next chunk as soon as the current one starts playing, so there is no audible pause between chunks. The user explicitly accepted the small overspend of one unheard chunk. At most one future chunk is generated; if the prefetch is still running at the boundary, Reader waits for it and does not send a duplicate paid request.
 
 EDITOR
 
@@ -154,6 +156,7 @@ After merge, main CI must build, verify/sign and publish the latest test APK.
 
 DEVICE TEST PRIORITIES
 
+0. ElevenLabs and Inworld: enter key -> Test (voices load) -> read a long text in Russian and Ukrainian; check there is no pause between chunks and MP3 export works.
 1. xAI Grok selected -> Edit -> put caret in middle of a sentence -> tap Play -> spinner appears -> audio starts exactly at caret while editor remains visible.
 2. Select a phrase -> tap Play -> audio starts at selection start.
 3. While keyboard is visible, drag the right fast-scroll thumb from near top to near bottom of a long text.
