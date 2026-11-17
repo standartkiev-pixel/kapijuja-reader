@@ -65,6 +65,53 @@ object CloudEngines {
             else -> 0.0
         }
 
+    // ---- models (ElevenLabs / Inworld) ----
+
+    fun priceUsdPerMillionChars(engine: String, model: String): Double =
+        when (engine) {
+            SettingsStore.ENGINE_ELEVEN -> ElevenLabsTtsClient.priceUsdPerMillionChars(model)
+            SettingsStore.ENGINE_INWORLD -> InworldTtsClient.priceUsdPerMillionChars(model)
+            else -> 0.0
+        }
+
+    /** Selectable models of an engine, cheapest first; empty if there is no choice. */
+    fun models(engine: String): List<VoiceChoice> =
+        when (engine) {
+            SettingsStore.ENGINE_ELEVEN -> ElevenLabsTtsClient.models
+            SettingsStore.ENGINE_INWORLD -> InworldTtsClient.models
+            else -> emptyList()
+        }.sortedBy { priceUsdPerMillionChars(engine, it.id) }
+
+    fun model(context: Context, engine: String): String =
+        when (engine) {
+            SettingsStore.ENGINE_ELEVEN -> SettingsStore.elevenModel(context)
+            SettingsStore.ENGINE_INWORLD -> SettingsStore.inworldModel(context)
+            else -> ""
+        }
+
+    fun setModel(context: Context, engine: String, model: String) {
+        when (engine) {
+            SettingsStore.ENGINE_ELEVEN -> SettingsStore.setElevenModel(context, model)
+            SettingsStore.ENGINE_INWORLD -> SettingsStore.setInworldModel(context, model)
+        }
+    }
+
+    /** Short model name without the description, e.g. "Eleven v3". */
+    fun modelName(engine: String, model: String): String =
+        models(engine).firstOrNull { it.id == model }?.label?.substringBefore(" — ") ?: model
+
+    /**
+     * Approximate price of one hour of reading (about 60,000 characters),
+     * e.g. "≈ $2.4/час". [hourWord] is the localized word for "hour".
+     */
+    fun pricePerHour(engine: String, model: String, hourWord: String): String =
+        String.format(
+            java.util.Locale.US,
+            "≈ $%.1f/%s",
+            priceUsdPerMillionChars(engine, model) * 60_000 / 1_000_000.0,
+            hourWord
+        )
+
     fun costEuro(context: Context, engine: String, text: String): Double =
         if (engine == SettingsStore.ENGINE_XAI) {
             XaiTtsClient.estimatedCostEuro(text)

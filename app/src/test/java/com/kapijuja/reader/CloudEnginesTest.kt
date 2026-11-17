@@ -45,4 +45,25 @@ class CloudEnginesTest {
             assertTrue(engine, links != null && links.billingUrl.startsWith("https://"))
         }
     }
+
+    @Test
+    fun modelsAreListedCheapestFirstWithHourlyPrice() {
+        val eleven = CloudEngines.models(SettingsStore.ENGINE_ELEVEN)
+        val prices = eleven.map {
+            CloudEngines.priceUsdPerMillionChars(SettingsStore.ENGINE_ELEVEN, it.id)
+        }
+        assertEquals(prices.sorted(), prices)
+        assertEquals(ElevenLabsTtsClient.models.size, eleven.size)
+
+        assertEquals(
+            "inworld-tts-2-flash",
+            CloudEngines.models(SettingsStore.ENGINE_INWORLD).first().id
+        )
+        assertEquals(
+            "≈ $4.8/час",
+            CloudEngines.pricePerHour(SettingsStore.ENGINE_ELEVEN, "eleven_v3", "час")
+        )
+        assertEquals("Eleven v3", CloudEngines.modelName(SettingsStore.ENGINE_ELEVEN, "eleven_v3"))
+        assertTrue(CloudEngines.models(SettingsStore.ENGINE_EDGE).isEmpty())
+    }
 }
