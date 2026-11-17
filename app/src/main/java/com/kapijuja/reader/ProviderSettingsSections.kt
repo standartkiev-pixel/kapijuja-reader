@@ -12,7 +12,6 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import java.util.Locale
 
 /**
  * Settings blocks extracted from SettingsActivity: "where to get a key / where
@@ -212,14 +211,14 @@ object ProviderSettingsSections {
 
         addLinks(activity, root, engine)
 
+        val hour = t(activity, "час", "godz.", "hour")
+        val sorted = CloudEngines.models(engine).ifEmpty { models }
+
         fun modelLabel(): String {
             val id = currentModel()
-            val name = models.firstOrNull { it.id == id }?.label ?: id
-            val hourUsd =
-                CloudEngines.priceUsdPerMillionChars(activity, engine) * 60_000 / 1_000_000.0
-            return t(activity, "Модель: ", "Model: ", "Model: ") + name +
-                String.format(Locale.US, " (≈ \$%.1f/", hourUsd) +
-                t(activity, "час)", "godz.)", "hour)")
+            return t(activity, "Модель: ", "Model: ", "Model: ") +
+                CloudEngines.modelName(engine, id) +
+                " (" + CloudEngines.pricePerHour(engine, id, hour) + ")"
         }
 
         val modelButton = Button(activity).apply {
@@ -229,8 +228,12 @@ object ProviderSettingsSections {
         modelButton.setOnClickListener {
             AlertDialog.Builder(activity)
                 .setTitle(t(activity, "Модель $title", "Model $title", "$title model"))
-                .setItems(models.map { it.label }.toTypedArray()) { _, which ->
-                    setModel(models[which].id)
+                .setItems(
+                    sorted.map {
+                        it.label + " · " + CloudEngines.pricePerHour(engine, it.id, hour)
+                    }.toTypedArray()
+                ) { _, which ->
+                    setModel(sorted[which].id)
                     modelButton.text = modelLabel()
                 }
                 .show()

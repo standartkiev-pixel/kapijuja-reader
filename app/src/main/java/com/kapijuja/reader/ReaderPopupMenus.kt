@@ -7,6 +7,8 @@ import android.widget.PopupMenu
 import android.widget.Toast
 
 object ReaderPopupMenus {
+    private const val MODEL_ITEM_ID = 1_000_000
+
     // Guards against a download loop when the provider returns no voices.
     private var accountVoicesRequested = false
 
@@ -141,7 +143,27 @@ object ReaderPopupMenus {
                 }
         }
         popup.menu.setGroupCheckable(0, true, true)
+
+        // Engines with several models get a "Model" entry on top of the voices.
+        val models = CloudEngines.models(engine)
+        if (models.isNotEmpty()) {
+            val hour = t(activity, "час", "godz.", "hour")
+            val currentModel = CloudEngines.model(activity, engine)
+            popup.menu.add(
+                1,
+                MODEL_ITEM_ID,
+                0,
+                t(activity, "⚙ Модель: ", "⚙ Model: ", "⚙ Model: ") +
+                    CloudEngines.modelName(engine, currentModel) +
+                    " (" + CloudEngines.pricePerHour(engine, currentModel, hour) + ")"
+            )
+        }
+
         popup.setOnMenuItemClickListener { item ->
+            if (item.itemId == MODEL_ITEM_ID) {
+                showModels(activity, engine, onChanged)
+                return@setOnMenuItemClickListener true
+            }
             val voice = voices.getOrNull(item.itemId - 1)
                 ?: return@setOnMenuItemClickListener false
             SettingsStore.setVoice(activity, engine, voice.id)
@@ -149,6 +171,33 @@ object ReaderPopupMenus {
             true
         }
         popup.show()
+    }
+
+    private fun showModels(
+        activity: Activity,
+        engine: String,
+        onChanged: () -> Unit
+    ) {
+        val models = CloudEngines.models(engine)
+        val hour = t(activity, "час", "godz.", "hour")
+        android.app.AlertDialog.Builder(activity)
+            .setTitle(
+                CloudEngines.name(engine) + " — " +
+                    t(activity, "модель", "model", "model")
+            )
+            .setSingleChoiceItems(
+                models.map {
+                    it.label + " · " + CloudEngines.pricePerHour(engine, it.id, hour)
+                }.toTypedArray(),
+                models.indexOfFirst { it.id == CloudEngines.model(activity, engine) }
+            ) { dialog, which ->
+                CloudEngines.setModel(activity, engine, models[which].id)
+                AppDiagnostics.info(activity, "Model selected: engine=$engine model=${models[which].id}")
+                onChanged()
+                dialog.dismiss()
+            }
+            .setNegativeButton(t(activity, "Отмена", "Anuluj", "Cancel"), null)
+            .show()
     }
 
     private fun showAndroidVoices(
